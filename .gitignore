@@ -1,0 +1,32 @@
+# Build artifacts
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+
+# App bundles (distributed via releases)
+*.app
+*.dmg
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
