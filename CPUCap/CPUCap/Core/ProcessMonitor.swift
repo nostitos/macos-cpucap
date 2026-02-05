@@ -29,6 +29,9 @@ class ProcessMonitor: ObservableObject {
         "systemstats", "coreaudiod", "coreduetd", "distnoted"
     ])
     
+    // Always hide ourselves - no point capping CPU Cap
+    private let hiddenProcesses = Set(["CPU Cap", "CPUCap"])
+    
     private var coreCount: Int {
         Foundation.ProcessInfo.processInfo.activeProcessorCount
     }
@@ -171,6 +174,11 @@ class ProcessMonitor: ObservableObject {
         for (pid, data) in processData {
             let appName = cleanAppName(data.name)
             
+            // Always skip ourselves
+            if hiddenProcesses.contains(appName) {
+                continue
+            }
+            
             // Skip system processes if not showing them
             if !showSystemProcesses && systemProcesses.contains(appName) {
                 continue
@@ -217,21 +225,26 @@ class ProcessMonitor: ObservableObject {
         // Filter by lifetime average (stable) instead of instantaneous (flickery)
         let newProcesses = appData
             .compactMap { (appName, data) -> AppProcessInfo? in
-                let cap = limiter.getCapForApp(appName)
-                let hasCap = cap != nil
+                let mode = limiter.getModeForApp(appName)
+                let hasMode = mode != nil
                 
-                // Show if lifetime average >= threshold OR has a cap set
-                guard data.cpuAvg >= minCPUThreshold || hasCap else {
+                // Show if lifetime average >= threshold OR has a mode set
+                guard data.cpuAvg >= minCPUThreshold || hasMode else {
                     return nil
                 }
                 
-                let isLimiting = limiter.isLimiting(appName)
+                let isThrottling = limiter.isThrottling(appName)
                 
                 let status: ProcessStatus
-                if isLimiting {
-                    status = .slowed
-                } else if cap != nil && cap! < data.cpuNow {
-                    status = .slowed
+                if let mode = mode {
+                    switch mode {
+                    case .fullSpeed:
+                        status = .running
+                    case .efficiency:
+                        status = isThrottling ? .slowed : .running
+                    case .stopped:
+                        status = isThrottling ? .stopped : .running
+                    }
                 } else {
                     status = .running
                 }
@@ -244,7 +257,7 @@ class ProcessMonitor: ObservableObject {
                     cpuAverage: data.cpuAvg,
                     bundlePath: data.bundlePath,
                     status: status,
-                    capPercent: cap
+                    throttleMode: mode
                 )
             }
         
@@ -337,6 +350,20 @@ class ProcessMonitor: ObservableObject {
             }
         }
         
+        // Handle our own app - might show as "CPUCap", "CPU Cap", or truncated
+        if name == "CPUCap" || name == "CPU Cap" || name.hasPrefix("CPU Cap") {
+            name = "CPU Cap"
+        }
+        
+        // If still Unknown, try to get a better name
+        if name == "Unknown" {
+            var nameBuffer = [CChar](repeating: 0, count: MAXCOMLEN + 1)
+            _ = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+            if nameBuffer[0] != 0 {
+                name = String(cString: nameBuffer)
+            }
+        }
+        
         return (name, bundlePath)
     }
     
@@ -362,9 +389,10 @@ class ProcessMonitor: ObservableObject {
     
     private func cleanAppName(_ name: String) -> String {
         let helpers: [String: String] = [
-            "com.apple.WebKit.WebContent": "Safari",
-            "com.apple.WebKit.Networking": "Safari",
-            "com.apple.WebKit.GPU": "Safari",
+            // WebKit processes - don't group as Safari, they're used by many apps
+            "com.apple.WebKit.WebContent": "WebKit",
+            "com.apple.WebKit.Networking": "WebKit",
+            "com.apple.WebKit.GPU": "WebKit",
             "Google Chrome Helper": "Chrome",
             "Google Chrome Helper (GPU)": "Chrome",
             "Google Chrome Helper (Renderer)": "Chrome",
@@ -399,8 +427,9 @@ class ProcessMonitor: ObservableObject {
             return mapped
         }
         
+        // WebKit processes are used by many apps (Mail, Notes, etc.), not just Safari
         if name.contains("WebContent") || name.contains("com.apple.WebKit") {
-            return "Safari"
+            return "WebKit"
         }
         
         if name.contains("Chrome Canary Helper") {

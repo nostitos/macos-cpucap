@@ -7,8 +7,7 @@ struct ProcessDetailView: View {
     @EnvironmentObject var cpuLimiter: CPULimiter
     @EnvironmentObject var ruleStore: RuleStore
     
-    @State private var capValue: Double = 50
-    @State private var capEnabled: Bool = false
+    @State private var selectedMode: ThrottleMode? = nil
     @State private var subProcesses: [SubProcessInfo] = []
     @State private var refreshTimer: Timer?
     
@@ -95,7 +94,7 @@ struct ProcessDetailView: View {
             
             Divider()
             
-            // Status and cap control
+            // Status and mode control
             statusSection
             
             Divider()
@@ -115,7 +114,7 @@ struct ProcessDetailView: View {
         }
         .frame(width: 450, height: 500)
         .onAppear {
-            loadCapSettings()
+            loadModeSettings()
             refreshSubProcesses()
             // Refresh every 2 seconds to get updated CPU values
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
@@ -190,31 +189,29 @@ struct ProcessDetailView: View {
                     .foregroundColor(.secondary)
             }
             
-            // Cap control
-            HStack(spacing: 12) {
-                Toggle("Limit CPU", isOn: $capEnabled)
-                    .toggleStyle(.switch)
-                    .onChange(of: capEnabled) { _, newValue in
-                        if newValue {
-                            ruleStore.setCapForApp(process.appName, cap: capValue)
-                        } else {
-                            ruleStore.setCapForApp(process.appName, cap: nil)
-                        }
-                    }
+            // Mode control
+            HStack(spacing: 16) {
+                Text("Throttle Mode:")
+                    .font(.subheadline)
                 
-                Slider(value: $capValue, in: 1...100, step: 1)
-                    .disabled(!capEnabled)
-                    .frame(width: 150)
-                    .onChange(of: capValue) { _, newValue in
-                        if capEnabled {
-                            ruleStore.setCapForApp(process.appName, cap: newValue)
-                        }
-                    }
-                
-                Text("\(Int(capValue))%")
-                    .font(.system(.body, design: .monospaced))
-                    .frame(width: 45, alignment: .trailing)
-                    .foregroundColor(capEnabled ? .orange : .secondary)
+                Picker("", selection: $selectedMode) {
+                    Text("Full Speed").tag(nil as ThrottleMode?)
+                    Text("Efficiency").tag(ThrottleMode.efficiency as ThrottleMode?)
+                    Text("Auto-Stop").tag(ThrottleMode.stopped as ThrottleMode?)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: selectedMode) { _, newValue in
+                    ruleStore.setModeForApp(process.appName, mode: newValue)
+                }
+            }
+            
+            // Mode description
+            HStack {
+                Image(systemName: modeIcon(selectedMode))
+                    .foregroundColor(modeColor(selectedMode))
+                Text(modeDescription(selectedMode))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding(16)
@@ -379,7 +376,7 @@ struct ProcessDetailView: View {
     private var statusText: String {
         switch process.status {
         case .running: return "Running"
-        case .slowed: return "Throttled"
+        case .slowed: return "Efficiency Mode"
         case .stopped: return "Stopped"
         }
     }
@@ -390,16 +387,42 @@ struct ProcessDetailView: View {
         return .green
     }
     
+    private func modeIcon(_ mode: ThrottleMode?) -> String {
+        guard let mode = mode else { return "hare" }
+        switch mode {
+        case .fullSpeed: return "hare"
+        case .efficiency: return "leaf"
+        case .stopped: return "pause.circle"
+        }
+    }
+    
+    private func modeColor(_ mode: ThrottleMode?) -> Color {
+        guard let mode = mode else { return .green }
+        switch mode {
+        case .fullSpeed: return .green
+        case .efficiency: return .blue
+        case .stopped: return .red
+        }
+    }
+    
+    private func modeDescription(_ mode: ThrottleMode?) -> String {
+        guard let mode = mode else {
+            return "Runs at full speed on all cores"
+        }
+        switch mode {
+        case .fullSpeed:
+            return "Runs at full speed on all cores"
+        case .efficiency:
+            return "Runs on efficiency cores to save power"
+        case .stopped:
+            return "Pauses when in background, resumes when you switch to it"
+        }
+    }
+    
     // MARK: - Actions
     
-    private func loadCapSettings() {
-        if let rule = ruleStore.ruleForApp(process.appName) {
-            capEnabled = rule.enabled
-            capValue = rule.capPercent
-        } else {
-            capEnabled = false
-            capValue = 50
-        }
+    private func loadModeSettings() {
+        selectedMode = ruleStore.modeForApp(process.appName)
     }
     
     private func openInFinder() {

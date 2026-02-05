@@ -7,15 +7,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Set as accessory app (menu bar only, no dock icon)
         NSApp.setActivationPolicy(.accessory)
         
-        // Request notification permissions for CPU hog alerts
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error)")
+        // Only request notifications if running as a proper app bundle
+        // (UNUserNotificationCenter crashes when running from swift build)
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+                if let error = error {
+                    print("Notification permission error: \(error)")
+                }
             }
+            UNUserNotificationCenter.current().delegate = self
         }
-        
-        // Set notification delegate
-        UNUserNotificationCenter.current().delegate = self
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -39,18 +40,21 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show notification even when app is in foreground
-        completionHandler([.banner, .sound])
+        completionHandler([.banner, .sound, .list])
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Handle notification tap - could open settings for the process
         let userInfo = response.notification.request.content.userInfo
-        if let appName = userInfo["appName"] as? String {
-            print("User tapped notification for: \(appName)")
-            // Could trigger UI to show cap options for this app
+        guard let appName = userInfo["appName"] as? String else {
+            completionHandler()
+            return
         }
+        
+        // Handle the action
+        HogDetector.shared.handleNotificationAction(response.actionIdentifier, appName: appName)
+        
         completionHandler()
     }
 }

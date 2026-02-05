@@ -49,9 +49,9 @@ struct MenuBarView: View {
         return processes
     }
     
-    // Processes with active caps (tamed)
+    // Processes with active throttle modes (tamed)
     private var tamedProcesses: [AppProcessInfo] {
-        processMonitor.processes.filter { $0.capPercent != nil }
+        processMonitor.processes.filter { $0.throttleMode != nil }
     }
     
     var body: some View {
@@ -179,7 +179,7 @@ struct MenuBarView: View {
                 .buttonStyle(.plain)
                 .frame(width: 36, alignment: .trailing)
                 
-                Text("Cap")
+                Text("Mode")
                     .frame(width: 55)
             }
             .font(.caption2)
@@ -277,6 +277,7 @@ struct MenuBarView: View {
         ruleStore.setCPULimiter(cpuLimiter)
         ruleStore.setProcessMonitor(processMonitor)
         hogDetector.setProcessMonitor(processMonitor)
+        hogDetector.setRuleStore(ruleStore)
     }
     
     private func toggleSort(_ column: SortColumn) {

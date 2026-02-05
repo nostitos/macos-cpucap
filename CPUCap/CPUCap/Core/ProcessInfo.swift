@@ -27,7 +27,7 @@ struct AppProcessInfo: Identifiable, Hashable {
     let cpuAverage: Double      // Average CPU over time
     let bundlePath: String?
     let status: ProcessStatus
-    let capPercent: Double?     // Current cap if any
+    let throttleMode: ThrottleMode?  // Current throttle mode if any
     
     var pidCount: Int { pids.count }
     

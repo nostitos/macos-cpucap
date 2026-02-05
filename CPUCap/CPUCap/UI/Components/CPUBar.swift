@@ -2,12 +2,24 @@ import SwiftUI
 
 struct CPUBar: View {
     let percent: Double
-    let cap: Double?
+    let mode: ThrottleMode?
     
     private var barColor: Color {
-        if let cap = cap, percent > cap {
-            return .orange
-        } else if percent > 80 {
+        if let mode = mode {
+            switch mode {
+            case .fullSpeed:
+                return defaultColor
+            case .efficiency:
+                return .blue
+            case .stopped:
+                return .red
+            }
+        }
+        return defaultColor
+    }
+    
+    private var defaultColor: Color {
+        if percent > 80 {
             return .red
         } else if percent > 50 {
             return .yellow
@@ -18,11 +30,6 @@ struct CPUBar: View {
     
     private var fillWidth: CGFloat {
         min(percent / 100.0, 1.0)
-    }
-    
-    private var capPosition: CGFloat? {
-        guard let cap = cap else { return nil }
-        return min(cap / 100.0, 1.0)
     }
     
     var body: some View {
@@ -37,12 +44,15 @@ struct CPUBar: View {
                     .fill(barColor)
                     .frame(width: geometry.size.width * fillWidth)
                 
-                // Cap indicator line
-                if let capPos = capPosition {
-                    Rectangle()
-                        .fill(Color.red)
-                        .frame(width: 2)
-                        .offset(x: geometry.size.width * capPos - 1)
+                // Mode indicator overlay
+                if let mode = mode, mode != .fullSpeed {
+                    HStack {
+                        Spacer()
+                        Text(mode.indicator)
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.trailing, 2)
+                    }
                 }
             }
         }

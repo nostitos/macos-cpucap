@@ -24,12 +24,12 @@ struct ProcessRowView: View {
         )
     }
     
-    private var currentCap: Double? {
-        ruleStore.ruleForApp(process.appName)?.capPercent
+    private var currentMode: ThrottleMode? {
+        ruleStore.modeForApp(process.appName)
     }
     
-    private var isLimiting: Bool {
-        cpuLimiter.isLimiting(process.appName)
+    private var isThrottling: Bool {
+        cpuLimiter.isThrottling(process.appName)
     }
     
     var body: some View {
@@ -68,7 +68,7 @@ struct ProcessRowView: View {
                 .help("Click for details")
             
             // CPU bar
-            CPUBar(percent: process.cpuPercent, cap: currentCap)
+            CPUBar(percent: process.cpuPercent, mode: currentMode)
                 .frame(height: 14)
             
             // CPU percentage (current)
@@ -85,13 +85,12 @@ struct ProcessRowView: View {
                     .frame(width: 36, alignment: .trailing)
             }
             
-            // Cap picker
-            CapPicker(
-                currentCap: currentCap,
-                isLimiting: isLimiting,
-                suggestedCap: DefaultRules.suggestedCap(for: process.appName)
-            ) { newCap in
-                ruleStore.setCapForApp(process.appName, cap: newCap)
+            // Mode picker
+            ModePicker(
+                currentMode: currentMode,
+                isThrottling: isThrottling
+            ) { newMode in
+                ruleStore.setModeForApp(process.appName, mode: newMode)
             }
             .frame(width: 55)
         }
@@ -156,7 +155,7 @@ struct TamedProcessRow: View {
         HStack(spacing: 6) {
             // Status dot
             Circle()
-                .fill(process.status == .slowed ? Color.blue : Color.green)
+                .fill(statusColor)
                 .frame(width: 6, height: 6)
             
             // App icon - clickable
@@ -180,16 +179,16 @@ struct TamedProcessRow: View {
             
             Spacer()
             
-            // Cap value
-            if let cap = process.capPercent {
-                Text("\(Int(cap))%")
+            // Mode indicator
+            if let mode = process.throttleMode {
+                Text(modeText(mode))
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.orange)
+                    .foregroundColor(modeColor(mode))
             }
             
             // Remove button
             Button(action: {
-                ruleStore.setCapForApp(process.appName, cap: nil)
+                ruleStore.setModeForApp(process.appName, mode: nil)
             }) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.caption)
@@ -199,5 +198,29 @@ struct TamedProcessRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
+    }
+    
+    private var statusColor: Color {
+        switch process.status {
+        case .running: return .green
+        case .slowed: return .blue
+        case .stopped: return .red
+        }
+    }
+    
+    private func modeText(_ mode: ThrottleMode) -> String {
+        switch mode {
+        case .fullSpeed: return ""
+        case .efficiency: return "E"
+        case .stopped: return "-"
+        }
+    }
+    
+    private func modeColor(_ mode: ThrottleMode) -> Color {
+        switch mode {
+        case .fullSpeed: return .secondary
+        case .efficiency: return .blue
+        case .stopped: return .red
+        }
     }
 }

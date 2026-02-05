@@ -196,10 +196,10 @@ struct RuleRowView: View {
             Text(rule.appName)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
-            Text("\(Int(rule.capPercent))%")
-                .foregroundColor(.orange)
+            Text(modeText(rule.mode))
+                .foregroundColor(modeColor(rule.mode))
                 .fontWeight(.medium)
-                .frame(width: 50)
+                .frame(width: 70)
             
             Button(action: {
                 ruleStore.removeRule(rule)
@@ -210,5 +210,21 @@ struct RuleRowView: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+    }
+    
+    private func modeText(_ mode: ThrottleMode) -> String {
+        switch mode {
+        case .fullSpeed: return "Full"
+        case .efficiency: return "E-cores"
+        case .stopped: return "Stopped"
+        }
+    }
+    
+    private func modeColor(_ mode: ThrottleMode) -> Color {
+        switch mode {
+        case .fullSpeed: return .green
+        case .efficiency: return .blue
+        case .stopped: return .red
+        }
     }
 }

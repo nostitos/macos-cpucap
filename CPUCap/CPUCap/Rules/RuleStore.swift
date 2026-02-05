@@ -9,6 +9,14 @@ class RuleStore: ObservableObject {
     private var processMonitor: ProcessMonitor?
     private var applyTimer: Timer?
     
+    // Use a consistent UserDefaults location regardless of how the app is launched
+    private let defaults: UserDefaults = {
+        if let defaults = UserDefaults(suiteName: "com.cpucap.app") {
+            return defaults
+        }
+        return UserDefaults.standard
+    }()
+    
     init() {
         loadRules()
         startAutoApply()
@@ -41,7 +49,7 @@ class RuleStore: ObservableObject {
             
             // Handle enable/disable changes
             if oldRule.enabled && !rule.enabled {
-                cpuLimiter?.removeLimit(appName: rule.appName)
+                cpuLimiter?.removeMode(appName: rule.appName)
             } else if rule.enabled {
                 applyRule(rule)
             }
@@ -51,36 +59,52 @@ class RuleStore: ObservableObject {
     func removeRule(_ rule: Rule) {
         rules.removeAll { $0.id == rule.id }
         saveRules()
-        cpuLimiter?.removeLimit(appName: rule.appName)
+        cpuLimiter?.removeMode(appName: rule.appName)
     }
     
     func ruleForApp(_ appName: String) -> Rule? {
         rules.first { $0.appName == appName }
     }
     
-    func setCapForApp(_ appName: String, cap: Double?) {
-        if let cap = cap {
+    /// Set throttle mode for an app
+    func setModeForApp(_ appName: String, mode: ThrottleMode?) {
+        if let mode = mode, mode != .fullSpeed {
             if let existingRule = ruleForApp(appName) {
                 var updated = existingRule
-                updated.capPercent = cap
+                updated.mode = mode
                 updated.enabled = true
                 updateRule(updated)
             } else {
-                let newRule = Rule(appName: appName, capPercent: cap, enabled: true)
+                let newRule = Rule(appName: appName, mode: mode, enabled: true)
                 addRule(newRule)
             }
         } else {
-            // Remove cap
+            // Remove rule (full speed or nil)
             if let existingRule = ruleForApp(appName) {
                 removeRule(existingRule)
             }
         }
     }
     
+    /// Get current mode for an app
+    func modeForApp(_ appName: String) -> ThrottleMode? {
+        guard let rule = ruleForApp(appName), rule.enabled else { return nil }
+        return rule.mode
+    }
+    
+    // Legacy compatibility - converts to mode internally
+    func setCapForApp(_ appName: String, cap: Double?) {
+        if cap != nil {
+            setModeForApp(appName, mode: .efficiency)
+        } else {
+            setModeForApp(appName, mode: nil)
+        }
+    }
+    
     // MARK: - Persistence
     
     private func loadRules() {
-        if let data = UserDefaults.standard.data(forKey: storageKey),
+        if let data = defaults.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode([Rule].self, from: data) {
             rules = decoded
         } else {
@@ -92,7 +116,7 @@ class RuleStore: ObservableObject {
     
     private func saveRules() {
         if let encoded = try? JSONEncoder().encode(rules) {
-            UserDefaults.standard.set(encoded, forKey: storageKey)
+            defaults.set(encoded, forKey: storageKey)
         }
     }
     
@@ -100,7 +124,7 @@ class RuleStore: ObservableObject {
     
     private func applyRule(_ rule: Rule) {
         guard rule.enabled, let limiter = cpuLimiter else { return }
-        limiter.setLimit(appName: rule.appName, capPercent: rule.capPercent)
+        limiter.setMode(appName: rule.appName, mode: rule.mode)
     }
     
     private func applyAllRules() {

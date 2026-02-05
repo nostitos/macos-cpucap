@@ -1,22 +1,16 @@
 import SwiftUI
 
-struct CapPicker: View {
-    let currentCap: Double?
-    let isLimiting: Bool
-    let suggestedCap: Double?
-    let onCapChanged: (Double?) -> Void
-    
-    @State private var showingCustomInput = false
-    @State private var customValue: String = ""
-    
-    private let presets: [Double?] = [nil, 5, 10, 15, 20, 25, 30, 50]
+struct ModePicker: View {
+    let currentMode: ThrottleMode?
+    let isThrottling: Bool
+    let onModeChanged: (ThrottleMode?) -> Void
     
     var body: some View {
         Menu {
-            Button(action: { onCapChanged(nil) }) {
+            Button(action: { onModeChanged(nil) }) {
                 HStack {
-                    Text("No limit")
-                    if currentCap == nil {
+                    Text("Full Speed")
+                    if currentMode == nil {
                         Image(systemName: "checkmark")
                     }
                 }
@@ -24,37 +18,32 @@ struct CapPicker: View {
             
             Divider()
             
-            ForEach(presets.compactMap { $0 }, id: \.self) { preset in
-                Button(action: { onCapChanged(preset) }) {
-                    HStack {
-                        Text("\(Int(preset))%")
-                        if let cap = currentCap, cap == preset {
-                            Image(systemName: "checkmark")
-                        }
-                        if let suggested = suggestedCap, suggested == preset, currentCap != preset {
-                            Text("(suggested)")
-                                .foregroundColor(.secondary)
-                        }
+            Button(action: { onModeChanged(.efficiency) }) {
+                HStack {
+                    Text("Efficiency")
+                    Text("runs on E-cores")
+                        .foregroundColor(.secondary)
+                    if currentMode == .efficiency {
+                        Image(systemName: "checkmark")
                     }
                 }
             }
             
-            Divider()
-            
-            Button("Custom...") {
-                customValue = currentCap != nil ? "\(Int(currentCap!))" : ""
-                showingCustomInput = true
+            Button(action: { onModeChanged(.stopped) }) {
+                HStack {
+                    Text("Auto-Stop")
+                    Text("pauses in background, resumes when focused")
+                        .foregroundColor(.secondary)
+                    if currentMode == .stopped {
+                        Image(systemName: "checkmark")
+                    }
+                }
             }
         } label: {
             HStack(spacing: 2) {
-                if let cap = currentCap {
-                    Text("\(Int(cap))%")
-                        .font(.system(.caption, design: .monospaced))
-                } else {
-                    Text("--")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
+                Text(labelText)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(labelColor)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
                     .foregroundColor(.secondary)
@@ -63,57 +52,36 @@ struct CapPicker: View {
             .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(currentCap != nil ? Color.orange.opacity(0.2) : Color.gray.opacity(0.1))
+                    .fill(backgroundColor)
             )
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
-        .sheet(isPresented: $showingCustomInput) {
-            CustomCapInputView(
-                value: $customValue,
-                onSubmit: { value in
-                    if let intValue = Int(value), intValue > 0, intValue <= 100 {
-                        onCapChanged(Double(intValue))
-                    }
-                    showingCustomInput = false
-                },
-                onCancel: {
-                    showingCustomInput = false
-                }
-            )
+    }
+    
+    private var labelText: String {
+        guard let mode = currentMode else { return "--" }
+        return mode.indicator.isEmpty ? "--" : mode.indicator
+    }
+    
+    private var labelColor: Color {
+        guard let mode = currentMode else { return .secondary }
+        switch mode {
+        case .fullSpeed: return .secondary
+        case .efficiency: return .blue
+        case .stopped: return .red
+        }
+    }
+    
+    private var backgroundColor: Color {
+        guard let mode = currentMode else { return Color.gray.opacity(0.1) }
+        switch mode {
+        case .fullSpeed: return Color.gray.opacity(0.1)
+        case .efficiency: return Color.blue.opacity(0.2)
+        case .stopped: return Color.red.opacity(0.2)
         }
     }
 }
 
-struct CustomCapInputView: View {
-    @Binding var value: String
-    let onSubmit: (String) -> Void
-    let onCancel: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Set Custom CPU Cap")
-                .font(.headline)
-            
-            HStack {
-                TextField("Cap %", text: $value)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                Text("%")
-            }
-            
-            HStack {
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                
-                Button("Set") {
-                    onSubmit(value)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(Int(value) == nil || Int(value)! <= 0 || Int(value)! > 100)
-            }
-        }
-        .padding(20)
-        .frame(width: 200)
-    }
-}
+// Legacy compatibility alias
+typealias CapPicker = ModePicker

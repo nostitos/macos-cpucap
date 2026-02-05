@@ -2,15 +2,25 @@ import Foundation
 import Darwin
 import AppKit
 
+// Darwin constants for setpriority
+private let PRIO_DARWIN_PROCESS: Int32 = 4
+private let PRIO_DARWIN_BG: Int32 = 0x1000
+
 class CPULimiter: ObservableObject {
     static let shared = CPULimiter()
     
-    @Published var activeLimits: [String: Double] = [:]  // appName -> capPercent
-    @Published var limitingStatus: [String: Bool] = [:]  // appName -> isCurrentlyThrottling
+    @Published var activeModes: [String: ThrottleMode] = [:]  // appName -> mode
+    @Published var currentlyThrottling: Set<String> = []       // apps currently being throttled
     
     private var processMonitor: ProcessMonitor?
     private var timer: Timer?
-    private var cycleCount: Int = 0
+    
+    // Track which PIDs we've put in background mode so we can restore them
+    private var backgroundPids: Set<pid_t> = []
+    private var stoppedPids: Set<pid_t> = []
+    
+    // Track PIDs per app so we can restore even if processMonitor doesn't have them
+    private var appPids: [String: Set<pid_t>] = [:]
     
     init() {}
     
@@ -20,93 +30,164 @@ class CPULimiter: ObservableObject {
     }
     
     private func startTimer() {
-        // Single timer for all throttling - runs every 1 second
+        // Timer to handle frontmost app changes and apply throttling
         DispatchQueue.main.async { [weak self] in
             self?.timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                self?.throttleCycle()
+                self?.applyThrottling()
             }
         }
     }
     
-    func setLimit(appName: String, capPercent: Double) {
-        // Resume processes first
-        if let pids = processMonitor?.pidsForApp(appName) {
-            for pid in pids { kill(pid, SIGCONT) }
-        }
+    // MARK: - Public API
+    
+    func setMode(appName: String, mode: ThrottleMode) {
+        // First, restore any previous state
+        restoreApp(appName)
         
         DispatchQueue.main.async {
-            self.activeLimits[appName] = capPercent
-            self.limitingStatus[appName] = true
+            if mode == .fullSpeed {
+                self.activeModes.removeValue(forKey: appName)
+            } else {
+                self.activeModes[appName] = mode
+            }
         }
+        
+        // Apply immediately
+        applyThrottling()
     }
     
-    func removeLimit(appName: String) {
-        // Resume processes
-        if let pids = processMonitor?.pidsForApp(appName) {
-            for pid in pids { kill(pid, SIGCONT) }
-        }
+    func removeMode(appName: String) {
+        restoreApp(appName)
         
         DispatchQueue.main.async {
-            self.activeLimits.removeValue(forKey: appName)
-            self.limitingStatus.removeValue(forKey: appName)
+            self.activeModes.removeValue(forKey: appName)
+            self.currentlyThrottling.remove(appName)
         }
     }
     
     func stopAll() {
-        // Resume all limited processes
-        for appName in activeLimits.keys {
-            if let pids = processMonitor?.pidsForApp(appName) {
-                for pid in pids { kill(pid, SIGCONT) }
-            }
+        // Restore all managed processes
+        for appName in activeModes.keys {
+            restoreApp(appName)
         }
     }
     
-    /// Called every 1 second - handles all throttling in one place
-    private func throttleCycle() {
-        guard !activeLimits.isEmpty else { return }
-        
-        cycleCount += 1
-        let cyclePhase = cycleCount % 10
+    func getModeForApp(_ appName: String) -> ThrottleMode? {
+        activeModes[appName]
+    }
+    
+    func isThrottling(_ appName: String) -> Bool {
+        currentlyThrottling.contains(appName)
+    }
+    
+    // MARK: - Throttling Logic
+    
+    private func applyThrottling() {
+        guard !activeModes.isEmpty else { return }
         
         // Get frontmost app once
         let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
         
-        // Batch status updates
-        var newStatus: [String: Bool] = [:]
+        var newThrottling: Set<String> = []
         
-        for (appName, cap) in activeLimits {
+        for (appName, mode) in activeModes {
             guard let pids = processMonitor?.pidsForApp(appName), !pids.isEmpty else {
                 continue
             }
             
-            // Don't throttle frontmost app
+            // Don't throttle frontmost app - restore it
             if isFrontmost(appName: appName, frontApp: frontApp) {
-                for pid in pids { kill(pid, SIGCONT) }
-                newStatus[appName] = false
+                restorePids(pids)
                 continue
             }
             
-            // Simple duty cycle based on cap percentage
-            // cap=20 means run 2 out of 10 cycles
-            let runCycles = max(1, Int(cap / 10.0))
+            // Track PIDs for this app so we can restore them later
+            appPids[appName] = Set(pids)
             
-            if cyclePhase < runCycles {
-                for pid in pids { kill(pid, SIGCONT) }
-            } else {
-                for pid in pids { kill(pid, SIGSTOP) }
+            // Apply throttling based on mode
+            switch mode {
+            case .fullSpeed:
+                restorePids(pids)
+                
+            case .efficiency:
+                // Set background QoS - runs on E-cores
+                for pid in pids {
+                    setBackgroundMode(pid: pid, enabled: true)
+                }
+                newThrottling.insert(appName)
+                
+            case .stopped:
+                // SIGSTOP - completely freeze
+                for pid in pids {
+                    if !stoppedPids.contains(pid) {
+                        kill(pid, SIGSTOP)
+                        stoppedPids.insert(pid)
+                    }
+                }
+                newThrottling.insert(appName)
             }
-            newStatus[appName] = true
         }
         
-        // Single UI update
-        if !newStatus.isEmpty {
-            DispatchQueue.main.async {
-                for (app, status) in newStatus {
-                    self.limitingStatus[app] = status
-                }
+        // Update UI
+        DispatchQueue.main.async {
+            self.currentlyThrottling = newThrottling
+        }
+    }
+    
+    // MARK: - Background Mode (E-core affinity)
+    
+    private func setBackgroundMode(pid: pid_t, enabled: Bool) {
+        let priority = enabled ? PRIO_DARWIN_BG : 0
+        let result = setpriority(PRIO_DARWIN_PROCESS, UInt32(pid), priority)
+        
+        if result == 0 {
+            if enabled {
+                backgroundPids.insert(pid)
+            } else {
+                backgroundPids.remove(pid)
             }
         }
     }
+    
+    // MARK: - Restore Functions
+    
+    private func restoreApp(_ appName: String) {
+        // First try our cached PIDs (important for stopped apps that won't show in processMonitor)
+        var pidsToRestore: [pid_t] = []
+        
+        if let cachedPids = appPids[appName] {
+            pidsToRestore = Array(cachedPids)
+        }
+        
+        // Also check processMonitor in case there are new PIDs
+        if let monitorPids = processMonitor?.pidsForApp(appName) {
+            for pid in monitorPids {
+                if !pidsToRestore.contains(pid) {
+                    pidsToRestore.append(pid)
+                }
+            }
+        }
+        
+        restorePids(pidsToRestore)
+        
+        // Clear cached PIDs for this app
+        appPids.removeValue(forKey: appName)
+    }
+    
+    private func restorePids(_ pids: [pid_t]) {
+        for pid in pids {
+            // Always try to resume - SIGCONT is safe to send even if not stopped
+            kill(pid, SIGCONT)
+            stoppedPids.remove(pid)
+            
+            // Remove background mode if set
+            if backgroundPids.contains(pid) {
+                setBackgroundMode(pid: pid, enabled: false)
+            }
+        }
+    }
+    
+    // MARK: - Helpers
     
     private func isFrontmost(appName: String, frontApp: String) -> Bool {
         if frontApp == appName { return true }
@@ -117,11 +198,18 @@ class CPULimiter: ObservableObject {
         return false
     }
     
-    func isLimiting(_ appName: String) -> Bool {
-        limitingStatus[appName] ?? false
-    }
+    // MARK: - Legacy compatibility (for migration)
     
-    func getCapForApp(_ appName: String) -> Double? {
-        activeLimits[appName]
+    var activeLimits: [String: Double] {
+        // Convert modes to fake percentages for any legacy code
+        var result: [String: Double] = [:]
+        for (app, mode) in activeModes {
+            switch mode {
+            case .fullSpeed: break
+            case .efficiency: result[app] = 50  // Arbitrary value
+            case .stopped: result[app] = 0
+            }
+        }
+        return result
     }
 }
