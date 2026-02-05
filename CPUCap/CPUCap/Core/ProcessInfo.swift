@@ -47,10 +47,11 @@ struct AppProcessInfo: Identifiable, Hashable {
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+        hasher.combine(cpuPercent)
     }
     
     static func == (lhs: AppProcessInfo, rhs: AppProcessInfo) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id && lhs.cpuPercent == rhs.cpuPercent && lhs.cpuAverage == rhs.cpuAverage
     }
 }
 
@@ -142,8 +143,9 @@ struct CPUHistoryPoint: Identifiable {
     let id = UUID()
     let timestamp: Date
     let totalCPU: Double
-    let pCoreCPU: Double
-    let eCoreCPU: Double
+    let eLimitedCPU: Double      // CPU used by E-limited apps
+    let autoStoppedCPU: Double   // CPU used by auto-stopped apps
+    let unlimitedCPU: Double     // CPU used by unlimited apps
 }
 
 /// Summary of CPU usage

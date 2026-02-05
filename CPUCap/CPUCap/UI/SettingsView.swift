@@ -18,12 +18,14 @@ enum SettingsTab: String, CaseIterable {
 struct SettingsView: View {
     @EnvironmentObject var ruleStore: RuleStore
     @EnvironmentObject var hogDetector: HogDetector
+    @EnvironmentObject var processMonitor: ProcessMonitor
     
     @State private var selectedTab: SettingsTab = .general
     @State private var launchAtLogin = LoginItemManager.isEnabled
     @State private var hogThreshold: Double = 80
     @State private var hogDuration: Double = 10
     @State private var alertsEnabled = true
+    @State private var samplingInterval: Double = 2.0
     
     var body: some View {
         HSplitView {
@@ -52,6 +54,7 @@ struct SettingsView: View {
             hogThreshold = hogDetector.hogThreshold
             hogDuration = hogDetector.hogDuration
             alertsEnabled = hogDetector.alertsEnabled
+            samplingInterval = processMonitor.samplingInterval
         }
     }
     
@@ -69,9 +72,29 @@ struct SettingsView: View {
                     .padding(8)
             }
             
+            GroupBox("Sampling") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Update interval:")
+                        Slider(value: $samplingInterval, in: 0.5...5.0, step: 0.5)
+                        Text("\(String(format: "%.1f", samplingInterval))s")
+                            .frame(width: 40, alignment: .trailing)
+                            .monospacedDigit()
+                    }
+                    .onChange(of: samplingInterval) { _, newValue in
+                        processMonitor.setSamplingInterval(newValue)
+                    }
+                    
+                    Text("How often CPU usage is measured. Lower = more responsive but uses more CPU.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+            
             GroupBox("About") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("CPU Cap monitors running processes and enforces CPU usage limits using SIGSTOP/SIGCONT signals.")
+                    Text("CPU Cap monitors running processes and limits CPU usage using E-core affinity or SIGSTOP/SIGCONT signals.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     

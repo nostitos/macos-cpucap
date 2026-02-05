@@ -10,6 +10,24 @@ struct CPUCapApp: App {
     @StateObject private var ruleStore = RuleStore()
     @StateObject private var hogDetector = HogDetector()
     
+    init() {
+        // Setup connections immediately at app startup
+        // This ensures rules are applied before menu is opened
+        setupConnections()
+    }
+    
+    private func setupConnections() {
+        // Need to dispatch async since StateObjects aren't initialized yet in init
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+            cpuLimiter.setProcessMonitor(processMonitor)
+            ruleStore.setCPULimiter(cpuLimiter)
+            ruleStore.setProcessMonitor(processMonitor)
+            processMonitor.setRuleStore(ruleStore)
+            hogDetector.setProcessMonitor(processMonitor)
+            hogDetector.setRuleStore(ruleStore)
+        }
+    }
+    
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
@@ -17,7 +35,7 @@ struct CPUCapApp: App {
                 .environmentObject(cpuLimiter)
                 .environmentObject(ruleStore)
                 .environmentObject(hogDetector)
-                .frame(width: 420, height: 800)
+                .frame(width: 420, height: 640)
         } label: {
             HStack(spacing: 2) {
                 Image(systemName: "cpu")
@@ -31,6 +49,7 @@ struct CPUCapApp: App {
             SettingsView()
                 .environmentObject(ruleStore)
                 .environmentObject(hogDetector)
+                .environmentObject(processMonitor)
                 .frame(minWidth: 450, minHeight: 350)
         }
         .windowResizability(.contentSize)

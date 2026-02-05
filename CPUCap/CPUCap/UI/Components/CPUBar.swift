@@ -3,6 +3,17 @@ import SwiftUI
 struct CPUBar: View {
     let percent: Double
     let mode: ThrottleMode?
+    let pCoreCount: Int
+    
+    // Full bar = 50% of P-core capacity
+    private var maxPercent: Double {
+        Double(max(pCoreCount, 1)) * 100.0 * 0.5
+    }
+    
+    // Percentage of bar filled (capped at 1.0)
+    private var capacityUsed: Double {
+        percent / maxPercent
+    }
     
     private var barColor: Color {
         if let mode = mode {
@@ -19,9 +30,10 @@ struct CPUBar: View {
     }
     
     private var defaultColor: Color {
-        if percent > 80 {
+        // Color based on P-core capacity usage, not raw percent
+        if capacityUsed > 0.8 {
             return .red
-        } else if percent > 50 {
+        } else if capacityUsed > 0.5 {
             return .yellow
         } else {
             return .green
@@ -29,7 +41,8 @@ struct CPUBar: View {
     }
     
     private var fillWidth: CGFloat {
-        min(percent / 100.0, 1.0)
+        // Scale to P-core capacity
+        min(CGFloat(capacityUsed), 1.0)
     }
     
     var body: some View {

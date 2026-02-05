@@ -5,12 +5,25 @@ struct CPUSummaryHeader: View {
     let isEnabled: Bool
     let onToggle: () -> Void
     
+    private var cpuName: String {
+        var size: size_t = 0
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        var name = [CChar](repeating: 0, count: size)
+        sysctlbyname("machdep.cpu.brand_string", &name, &size, nil, 0)
+        return String(cString: name)
+    }
+    
     var body: some View {
         VStack(spacing: 8) {
             // Title row with master toggle
             HStack {
-                Text("CPU Cap")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CPU Cap")
+                        .font(.headline)
+                    Text(cpuName)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
                 
                 Spacer()
                 
@@ -35,14 +48,14 @@ struct CPUSummaryHeader: View {
                 
                 // P-cores
                 StatBox(
-                    title: "P-cores",
+                    title: "\(summary.pCoreCount) P-cores",
                     value: "\(Int(summary.pCoreCPU))%",
                     color: .blue
                 )
                 
                 // E-cores
                 StatBox(
-                    title: "E-cores",
+                    title: "\(summary.eCoreCount) E-cores",
                     value: "\(Int(summary.eCoreCPU))%",
                     color: .cyan
                 )

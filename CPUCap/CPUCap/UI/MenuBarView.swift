@@ -20,6 +20,7 @@ struct MenuBarView: View {
     @State private var showGraph = true
     @State private var sortColumn: SortColumn = .avg
     @State private var sortOrder: SortOrder = .descending
+    @State private var showLimitedSection = false
     
     // Filtered and sorted processes
     private var filteredProcesses: [AppProcessInfo] {
@@ -49,9 +50,9 @@ struct MenuBarView: View {
         return processes
     }
     
-    // Processes with active throttle modes (tamed)
-    private var tamedProcesses: [AppProcessInfo] {
-        processMonitor.processes.filter { $0.throttleMode != nil }
+    // All limited processes (E-limited + auto-stopped)
+    private var limitedProcesses: [AppProcessInfo] {
+        processMonitor.processes.filter { ruleStore.modeForApp($0.appName) != nil }
     }
     
     var body: some View {
@@ -102,42 +103,17 @@ struct MenuBarView: View {
                 
                 // System processes toggle
                 Button(action: { processMonitor.showSystemProcesses.toggle() }) {
-                    Image(systemName: "gear")
+                    Image(systemName: processMonitor.showSystemProcesses ? "eye" : "eye.slash")
                         .foregroundColor(processMonitor.showSystemProcesses ? .blue : .secondary)
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help(processMonitor.showSystemProcesses ? "Hide system processes" : "Show system processes")
+                .help(processMonitor.showSystemProcesses ? "Showing system processes (click to hide)" : "Hiding system processes (click to show)")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             
             Divider()
-            
-            // Tamed processes section (if any)
-            if !tamedProcesses.isEmpty {
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Tamed Apps")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(tamedProcesses.count)")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    
-                    ForEach(tamedProcesses) { process in
-                        TamedProcessRow(process: process)
-                    }
-                }
-                .background(Color.orange.opacity(0.05))
-                
-                Divider()
-            }
             
             // Column headers (clickable for sorting)
             HStack(spacing: 6) {
@@ -222,27 +198,47 @@ struct MenuBarView: View {
             
             Divider()
             
+            // Expandable Limited section (unified for E-limited and auto-stopped)
+            if showLimitedSection && !limitedProcesses.isEmpty {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Limited")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    
+                    ForEach(limitedProcesses) { process in
+                        LimitedProcessRow(process: process)
+                    }
+                }
+                .background(Color.gray.opacity(0.08))
+                
+                Divider()
+            }
+            
             // Footer
             HStack(spacing: 12) {
-                // Enabled/Disabled status
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(processMonitor.isEnabled ? Color.green : Color.red)
-                        .frame(width: 8, height: 8)
-                    Text(processMonitor.isEnabled ? "Active" : "Paused")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                // Active limits count
-                if !cpuLimiter.activeLimits.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.fill")
-                            .foregroundColor(.orange)
-                        Text("\(cpuLimiter.activeLimits.count) limited")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                // Limited count - clickable
+                if !limitedProcesses.isEmpty {
+                    Button(action: { showLimitedSection.toggle() }) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.purple)
+                                .frame(width: 8, height: 8)
+                            Text("\(limitedProcesses.count) limited")
+                                .font(.caption)
+                                .foregroundColor(.primary)
+                            Text(showLimitedSection ? "(hide)" : "(show)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .help("Click to \(showLimitedSection ? "hide" : "show") limited apps")
                 }
                 
                 Spacer()
@@ -276,6 +272,7 @@ struct MenuBarView: View {
         cpuLimiter.setProcessMonitor(processMonitor)
         ruleStore.setCPULimiter(cpuLimiter)
         ruleStore.setProcessMonitor(processMonitor)
+        processMonitor.setRuleStore(ruleStore)
         hogDetector.setProcessMonitor(processMonitor)
         hogDetector.setRuleStore(ruleStore)
     }
@@ -302,5 +299,75 @@ struct MenuBarView: View {
                 .font(.system(size: 8))
                 .foregroundColor(.secondary.opacity(0.5))
         }
+    }
+}
+
+// Compact row for limited processes in expandable section
+struct LimitedProcessRow: View {
+    let process: AppProcessInfo
+    
+    @EnvironmentObject var ruleStore: RuleStore
+    
+    private var mode: ThrottleMode? {
+        ruleStore.modeForApp(process.appName)
+    }
+    
+    private var modeText: String {
+        switch mode {
+        case .efficiency: return "E-limited"
+        case .stopped: return "auto-stopped"
+        default: return ""
+        }
+    }
+    
+    private var modeColor: Color {
+        switch mode {
+        case .efficiency: return .blue
+        case .stopped: return .orange
+        default: return .secondary
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            // App icon
+            if let icon = process.icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            }
+            
+            // App name
+            Text(process.appName)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            
+            Spacer()
+            
+            // CPU %
+            Text(String(format: "%.0f%%", process.cpuPercent))
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundColor(.secondary)
+            
+            // Mode text
+            Text(modeText)
+                .font(.caption2)
+                .foregroundColor(modeColor)
+                .frame(width: 70, alignment: .trailing)
+            
+            // Remove button
+            Button(action: {
+                ruleStore.setModeForApp(process.appName, mode: nil)
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove limit")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
     }
 }

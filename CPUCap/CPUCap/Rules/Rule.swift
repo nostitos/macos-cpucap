@@ -9,8 +9,8 @@ enum ThrottleMode: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .fullSpeed: return "Full Speed"
-        case .efficiency: return "Efficiency"
-        case .stopped: return "Auto-Stop"
+        case .efficiency: return "E-limited"
+        case .stopped: return "Auto-stop"
         }
     }
     
@@ -19,15 +19,15 @@ enum ThrottleMode: String, Codable, CaseIterable {
         switch self {
         case .fullSpeed: return ""
         case .efficiency: return "E"
-        case .stopped: return "-"
+        case .stopped: return "S"
         }
     }
     
     var description: String {
         switch self {
         case .fullSpeed: return "Run at full speed on all cores"
-        case .efficiency: return "Run on efficiency cores to save power"
-        case .stopped: return "Pause when in background, resume when focused"
+        case .efficiency: return "Limit to E-cores to save power"
+        case .stopped: return "Stop when in background, resume when focused"
         }
     }
 }

@@ -1,6 +1,6 @@
 # CPU Cap
 
-**Free macOS menu bar app that manages CPU usage using Apple Silicon efficiency cores.**
+**Free macOS menu bar app that limits CPU-hungry apps to efficiency cores.**
 
 An open-source alternative to App Tamer ($15).
 
@@ -8,24 +8,26 @@ An open-source alternative to App Tamer ($15).
 
 ## Download
 
-**[Download CPU Cap](https://github.com/nostitos/macos-cpucap/releases/latest)**
+**[Download CPU Cap v1.2.0](https://github.com/nicokosi/cpucap/releases/latest)**
 
 Requires macOS 14.0 (Sonoma) or later. Optimized for Apple Silicon Macs.
 
 ## What It Does
 
-Some apps hog your CPU even when you're not using them - draining battery, making fans spin, and slowing everything down. CPU Cap lets you push background apps to efficiency cores, saving up to 70% energy.
+Some apps hog your CPU even when you're not using them - draining battery, spinning fans, and slowing everything down. CPU Cap lets you limit background apps to efficiency cores, saving up to 70% energy.
 
-**Before:** Chrome uses 80% CPU in the background on P-cores, your laptop gets hot  
-**After:** Chrome runs on E-cores, uses 70% less power, stays cool and quiet
+**Before:** Chrome uses 80% CPU in the background on P-cores, laptop gets hot  
+**After:** Chrome is E-limited, uses 70% less power, stays cool and quiet
 
 ## Features
 
-- **Efficiency Mode** - Run background apps on E-cores to save power
-- **Auto-Stop Mode** - Pause apps when in background, resume when focused
-- **See CPU usage** - Sorted by which apps use the most (Now & Average)
-- **Runs in menu bar** - Click the icon to see and control apps
-- **Lightweight** - Uses <1% CPU itself when menu is closed
+- **E-limited mode** - Limit apps to E-cores to save power
+- **Auto-stop mode** - Pause apps when in background, resume when focused
+- **Live CPU chart** - Stacked graph showing unlimited vs limited CPU usage
+- **Real-time monitoring** - See CPU usage sorted by Now & Average
+- **Adjustable sampling** - Set update interval from 0.5s to 5s
+- **Menu bar app** - Click the icon to see and control apps
+- **Lightweight** - Uses <1% CPU itself
 - **Open source** - Free forever, no tracking, no ads
 
 ## How It Works
@@ -35,8 +37,8 @@ CPU Cap uses macOS Quality of Service (QoS) to control which CPU cores apps run 
 | Mode | What it does | Best for |
 |------|--------------|----------|
 | **Full Speed** | Runs on all cores (P + E) | Active apps |
-| **Efficiency** | Hints macOS to prefer E-cores | Background apps you want running |
-| **Auto-Stop** | Pauses when in background, resumes when focused | Apps you only need when visible |
+| **E-limited** | Limits to E-cores via QoS | Background apps you want running |
+| **Auto-stop** | Pauses when in background, resumes when focused | Apps you only need when visible |
 
 ### Why E-cores?
 
@@ -44,90 +46,96 @@ Apple Silicon Macs have two types of CPU cores:
 - **P-cores (Performance)** - Fast but power-hungry
 - **E-cores (Efficiency)** - Slower but use ~70% less energy
 
-When you set an app to Efficiency mode, it keeps running smoothly but uses far less power. Your P-cores stay free for the apps you're actively using.
+When you E-limit an app, it keeps running smoothly but uses far less power. Your P-cores stay free for the apps you're actively using.
+
+## The Interface
+
+### Header
+Shows your CPU model and usage breakdown:
+- **Total** - Overall CPU usage
+- **X P-cores** - Performance core usage  
+- **X E-cores** - Efficiency core usage
+
+### Chart
+Stacked area chart showing CPU breakdown over time:
+- **Green** - Unlimited apps
+- **Blue** - E-limited apps
+- **Orange** - Auto-stopped apps
+- **White line** - Total CPU
+
+### Process List
+Apps sorted by average CPU usage. Each row shows:
+- **Status dot** - Green (unlimited), Blue (E-limited), Orange (auto-stopped)
+- **App name** - Click for detailed sub-process view
+- **CPU bar** - Visual indicator (full bar = 50% of P-core capacity)
+- **Now** - Current CPU percentage
+- **Avg** - Lifetime average CPU
+- **Mode** - Click to change (E = E-limited, S = Auto-stop)
+
+### Footer
+Shows count of limited apps. Click to expand and see the list.
 
 ## Installation
 
-1. Download the DMG from [Releases](https://github.com/nostitos/macos-cpucap/releases)
+1. Download the DMG from [Releases](https://github.com/nicokosi/cpucap/releases)
 2. Open the DMG file
 3. Drag CPU Cap to your Applications folder
 4. Open CPU Cap from Applications
 5. Click "Open" if macOS asks about unidentified developer
 
-## How to Use
+## Settings
 
-### 1. Open the Menu
-Click the CPU Cap icon in your menu bar (shows current total CPU %).
+Access via the Settings button in the footer:
 
-### 2. Find the App
-Apps are sorted by average CPU usage. Use the search bar to filter.
-
-### 3. Set a Mode
-Click the dropdown next to any app and choose:
-- **Full Speed** - No throttling
-- **Efficiency** - Run on E-cores (shows "E" indicator)
-- **Auto-Stop** - Pause in background (shows "-" indicator)
-
-### 4. View Details
-Click on any app name to see detailed info including sub-processes:
-
-![Process Details](screenshots/subdetails.png)
-
-### 5. Settings
-Configure startup behavior and manage saved rules:
-
-![Settings](screenshots/settings.png)
+- **Startup** - Launch at login
+- **Sampling** - Adjust update interval (0.5s - 5s)
+- **Rules** - View and manage saved app modes
+- **Alerts** - Configure CPU hog notifications
 
 ## FAQ
 
 **Does it work on Apple Silicon (M1/M2/M3/M4)?**  
-Yes! CPU Cap is optimized for Apple Silicon and uses the E-core affinity feature. It also works on Intel Macs using the older SIGSTOP method.
+Yes! CPU Cap is optimized for Apple Silicon and uses E-core affinity.
 
-**What's the difference vs the old percentage caps?**  
-The old method (used by App Tamer and others) freezes apps in cycles - e.g., run 20% of the time, frozen 80%. This can cause stuttering. Efficiency mode keeps apps running smoothly, just on slower cores.
+**What's the difference vs percentage-based throttling?**  
+Old tools freeze apps in cycles (run 20%, frozen 80%), causing stuttering. E-limiting keeps apps running smoothly on slower cores.
 
-**Will Efficiency mode slow down my apps?**  
-E-cores are about 2-3x slower than P-cores, but for background tasks this is usually fine. The app keeps running - it's not paused.
+**Will E-limiting slow down my apps?**  
+E-cores are 2-3x slower than P-cores, but for background tasks this is usually fine. The app keeps running - it's not paused.
 
-**What about Auto-Stop mode?**  
-Auto-Stop completely pauses the app (SIGSTOP) when it's in the background. When you click on the app, it instantly resumes. Good for apps you only need when visible.
+**What about Auto-stop mode?**  
+Auto-stop completely pauses the app (SIGSTOP) when it's in the background. When you click on the app, it instantly resumes.
 
 **Why does Activity Monitor still show high CPU?**  
-Activity Monitor shows total CPU time, not which cores are used. An app in Efficiency mode may still show high CPU %, but it's using less power because it's on E-cores.
+Activity Monitor shows CPU time, not which cores. An E-limited app may show high %, but uses less power on E-cores.
 
-**Can I cap system processes?**  
-Some protected system processes cannot be throttled. CPU Cap only shows apps you can actually control.
-
-**Does it start at login?**  
-Yes, you can enable this in Settings. CPU Cap remembers your modes between sessions.
-
-**Why do I see "unidentified developer" warning?**  
-The app is ad-hoc signed (not notarized with Apple). You can safely click "Open" or right-click and choose Open.
+**Does it remember my settings?**  
+Yes, all modes are saved and restored when apps restart.
 
 ## Building from Source
 
 Requires Xcode 15+ and macOS 14+.
 
 ```bash
-git clone https://github.com/nostitos/macos-cpucap.git
-cd macos-cpucap
+git clone https://github.com/nicokosi/cpucap.git
+cd cpucap
 
 # Development build
 cd CPUCap
 swift build
 .build/debug/CPUCap
 
-# Release build (universal binary)
-./scripts/build-release.sh 1.0.1
+# Release build
+./scripts/build-release.sh 1.2.0
 
 # Create DMG installer
-./scripts/create-dmg.sh 1.0.1
+./scripts/create-dmg.sh 1.2.0
 ```
 
 ## Project Structure
 
 ```
-macos-cpucap/
+cpucap/
 ├── CPUCap/                 # Swift package
 │   ├── Package.swift
 │   └── CPUCap/
@@ -142,15 +150,11 @@ macos-cpucap/
 
 ## Contributing
 
-Contributions welcome! Please open an issue first to discuss what you'd like to change.
+Contributions welcome! Please open an issue first to discuss changes.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE)
-
-## Credits
-
-Made with frustration at Chrome's CPU usage.
 
 ---
 

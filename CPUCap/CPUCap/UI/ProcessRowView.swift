@@ -67,8 +67,8 @@ struct ProcessRowView: View {
                 }
                 .help("Click for details")
             
-            // CPU bar
-            CPUBar(percent: process.cpuPercent, mode: currentMode)
+            // CPU bar - scaled to P-core capacity
+            CPUBar(percent: process.cpuPercent, mode: currentMode, pCoreCount: processMonitor.summary.pCoreCount)
                 .frame(height: 14)
             
             // CPU percentage (current)
@@ -102,14 +102,18 @@ struct ProcessRowView: View {
     }
     
     private var statusColor: Color {
-        switch process.status {
-        case .running:
-            return .green
-        case .slowed:
-            return .blue
-        case .stopped:
-            return .red
+        // Show mode color if limited, otherwise green
+        if let mode = currentMode {
+            switch mode {
+            case .fullSpeed:
+                return .green
+            case .efficiency:
+                return .blue
+            case .stopped:
+                return .orange
+            }
         }
+        return .green
     }
     
     private var rowBackground: Color {

@@ -20,9 +20,7 @@ struct ModePicker: View {
             
             Button(action: { onModeChanged(.efficiency) }) {
                 HStack {
-                    Text("Efficiency")
-                    Text("runs on E-cores")
-                        .foregroundColor(.secondary)
+                    Text("E-limited")
                     if currentMode == .efficiency {
                         Image(systemName: "checkmark")
                     }
@@ -31,9 +29,7 @@ struct ModePicker: View {
             
             Button(action: { onModeChanged(.stopped) }) {
                 HStack {
-                    Text("Auto-Stop")
-                    Text("pauses in background, resumes when focused")
-                        .foregroundColor(.secondary)
+                    Text("Auto-stop")
                     if currentMode == .stopped {
                         Image(systemName: "checkmark")
                     }
@@ -69,7 +65,7 @@ struct ModePicker: View {
         switch mode {
         case .fullSpeed: return .secondary
         case .efficiency: return .blue
-        case .stopped: return .red
+        case .stopped: return .orange
         }
     }
     
@@ -78,7 +74,7 @@ struct ModePicker: View {
         switch mode {
         case .fullSpeed: return Color.gray.opacity(0.1)
         case .efficiency: return Color.blue.opacity(0.2)
-        case .stopped: return Color.red.opacity(0.2)
+        case .stopped: return Color.orange.opacity(0.2)
         }
     }
 }

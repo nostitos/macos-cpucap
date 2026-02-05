@@ -10,11 +10,15 @@ class ProcessMonitor: ObservableObject {
     @Published var cpuHistory: [CPUHistoryPoint] = []
     @Published var isEnabled: Bool = true
     @Published var showSystemProcesses: Bool = false
+    @Published var samplingInterval: Double = 2.0  // Seconds between samples
     
     private var timer: Timer?
     private var previousSamples: [pid_t: UInt64] = [:]
     private var previousTimestamp: CFAbsoluteTime = 0
     private let minCPUThreshold: Double = 0.1  // Show processes using >0.1% CPU
+    
+    // Reference to RuleStore for checking modes
+    private weak var ruleStore: RuleStore?
     
     // Cache for process start times (doesn't change)
     private var startTimeCache: [pid_t: Date] = [:]
@@ -25,8 +29,28 @@ class ProcessMonitor: ObservableObject {
     
     // System processes to optionally hide
     private let systemProcesses = Set([
+        // Core system
         "kernel_task", "launchd", "WindowServer", "loginwindow",
-        "systemstats", "coreaudiod", "coreduetd", "distnoted"
+        "systemstats", "coreaudiod", "coreduetd", "distnoted",
+        // Daemons
+        "cfprefsd", "containermanagerd", "coreservicesd", "diskarbitrationd",
+        "fseventsd", "logd", "mds", "mds_stores", "mdworker", "mdworker_shared",
+        "notifyd", "opendirectoryd", "powerd", "securityd", "syslogd", "thermalmonitord",
+        "usbd", "useractivityd", "warmd", "watchdogd",
+        // Graphics/display
+        "MTLCompilerService", "VTDecoderXPCService", "gpumemd", "hidd",
+        // Network
+        "CommCenter", "identityservicesd", "mDNSResponder", "netbiosd", "networkd",
+        "rapportd", "symptomsd", "trustd", "WiFiAgent",
+        // Apple services
+        "AMPDeviceDiscoveryAgent", "AMPLibraryAgent", "askpermissiond", "biomed",
+        "cloudd", "cloudpaird", "commerced", "ctkd", "familycircled", "findmydeviced",
+        "gamecontrollerd", "iconservicesagent", "legacyScreenSaver", "locationd",
+        "nsurlsessiond", "parsecd", "pbs", "remindd", "routined", "runningboardd",
+        "screencaptureui", "sharingd", "siriactionsd", "suggestd", "translationd",
+        "transparencyd", "universalaccessd", "usernoted", "videosubscriptionsd",
+        // XPC services (generic pattern handled separately)
+        "screencapture", "SystemUIServer", "ControlCenter", "NotificationCenter"
     ])
     
     // Always hide ourselves - no point capping CPU Cap
@@ -69,15 +93,30 @@ class ProcessMonitor: ObservableObject {
     
     @Published var isMenuOpen: Bool = false
     
+    func setRuleStore(_ store: RuleStore) {
+        self.ruleStore = store
+    }
+    
     func start() {
         guard isEnabled else { return }
         
-        // Only sample when menu is open
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.isEnabled, self.isMenuOpen else { return }
+        // Invalidate existing timer
+        timer?.invalidate()
+        
+        // Sample at configured interval
+        timer = Timer.scheduledTimer(withTimeInterval: samplingInterval, repeats: true) { [weak self] _ in
+            guard let self = self, self.isEnabled else { return }
             self.sample()
         }
         RunLoop.main.add(timer!, forMode: .common)
+    }
+    
+    func setSamplingInterval(_ interval: Double) {
+        samplingInterval = max(0.5, min(10.0, interval))  // Clamp between 0.5 and 10 seconds
+        // Restart timer with new interval
+        if timer != nil {
+            start()
+        }
     }
     
     func stop() {
@@ -87,7 +126,8 @@ class ProcessMonitor: ObservableObject {
     
     func menuOpened() {
         isMenuOpen = true
-        sample()  // Immediate sample when menu opens
+        // Sample immediately when menu opens for responsiveness
+        sample()
     }
     
     func menuClosed() {
@@ -180,8 +220,25 @@ class ProcessMonitor: ObservableObject {
             }
             
             // Skip system processes if not showing them
-            if !showSystemProcesses && systemProcesses.contains(appName) {
-                continue
+            if !showSystemProcesses {
+                if systemProcesses.contains(appName) {
+                    continue
+                }
+                // Also skip processes that look like system daemons
+                // Pattern: all lowercase, ends in 'd', short name (e.g., "cfprefsd", "logd")
+                if appName.hasSuffix("d") && appName.count < 20 && !appName.contains(" ") {
+                    if appName.allSatisfy({ $0.isLowercase || $0.isNumber }) {
+                        continue
+                    }
+                }
+                // Skip XPC services (but not app helpers like "Chrome Helper")
+                if appName.contains("XPCService") {
+                    continue
+                }
+                // Skip system agents (but keep ones that are part of apps)
+                if appName.hasSuffix("Agent") && !appName.contains(" ") {
+                    continue
+                }
             }
             
             // Calculate instantaneous CPU %
@@ -218,14 +275,15 @@ class ProcessMonitor: ObservableObject {
             }
         }
         
-        // Get reference to limiter for status
+        // Get reference to limiter for throttling status
         let limiter = CPULimiter.shared
         
         // Convert to AppProcessInfo array
         // Filter by lifetime average (stable) instead of instantaneous (flickery)
         let newProcesses = appData
             .compactMap { (appName, data) -> AppProcessInfo? in
-                let mode = limiter.getModeForApp(appName)
+                // Get mode from RuleStore (source of truth), fallback to limiter
+                let mode = self.ruleStore?.modeForApp(appName) ?? limiter.getModeForApp(appName)
                 let hasMode = mode != nil
                 
                 // Show if lifetime average >= threshold OR has a mode set
@@ -261,19 +319,37 @@ class ProcessMonitor: ObservableObject {
                 )
             }
         
+        // Calculate CPU by category for chart
+        var eLimitedCPU: Double = 0
+        var autoStoppedCPU: Double = 0
+        var unlimitedCPU: Double = 0
+        
+        for process in newProcesses {
+            switch process.throttleMode {
+            case .efficiency:
+                eLimitedCPU += process.cpuPercent
+            case .stopped:
+                autoStoppedCPU += process.cpuPercent
+            case .fullSpeed, .none:
+                unlimitedCPU += process.cpuPercent
+            }
+        }
+        
         // Update history for graph
         let historyPoint = CPUHistoryPoint(
             timestamp: Date(),
             totalCPU: totalCPUUsage / Double(coreCount),
-            pCoreCPU: totalCPUUsage * 0.7 / Double(summary.pCoreCount),  // Approximation
-            eCoreCPU: totalCPUUsage * 0.3 / Double(summary.eCoreCount)   // Approximation
+            eLimitedCPU: eLimitedCPU,
+            autoStoppedCPU: autoStoppedCPU,
+            unlimitedCPU: unlimitedCPU
         )
         
         DispatchQueue.main.async {
+            // Force SwiftUI to notice the change
+            self.objectWillChange.send()
+            
             self.processes = newProcesses
             self.summary.totalCPU = totalCPUUsage / Double(self.coreCount)
-            self.summary.pCoreCPU = historyPoint.pCoreCPU
-            self.summary.eCoreCPU = historyPoint.eCoreCPU
             
             // Keep last 60 points (~2 minutes at 2s interval)
             self.cpuHistory.append(historyPoint)
@@ -432,10 +508,10 @@ class ProcessMonitor: ObservableObject {
             return "WebKit"
         }
         
-        if name.contains("Chrome Canary Helper") {
+        if name.contains("Chrome Canary") {
             return "Chrome Canary"
         }
-        if name.contains("Chrome Helper") {
+        if name.contains("Chrome Helper") || name == "Google Chrome" {
             return "Chrome"
         }
         
