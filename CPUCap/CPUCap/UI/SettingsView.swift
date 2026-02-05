@@ -156,6 +156,11 @@ struct SettingsView: View {
                 Toggle("Enable CPU hog alerts", isOn: $alertsEnabled)
                     .onChange(of: alertsEnabled) { _, newValue in
                         hogDetector.alertsEnabled = newValue
+                        if newValue {
+                            hogDetector.start()
+                        } else {
+                            hogDetector.stop()
+                        }
                     }
                     .padding(8)
             }

@@ -3,12 +3,14 @@ import AppKit
 import UserNotifications
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var rightClickMonitor: Any?
+    private var rightClickMenu: NSMenu?
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set as accessory app (menu bar only, no dock icon)
         NSApp.setActivationPolicy(.accessory)
         
         // Only request notifications if running as a proper app bundle
-        // (UNUserNotificationCenter crashes when running from swift build)
         if Bundle.main.bundleIdentifier != nil {
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
                 if let error = error {
@@ -17,29 +19,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             UNUserNotificationCenter.current().delegate = self
         }
+        
+        // Build the right-click context menu
+        let menu = NSMenu()
+        
+        let settingsItem = NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let quitItem = NSMenuItem(title: "Quit CPU Cap", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        
+        rightClickMenu = menu
+        
+        // Monitor right-click events on the status bar area
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseUp) { [weak self] event -> NSEvent? in
+            guard let self = self,
+                  let menu = self.rightClickMenu,
+                  let window = event.window,
+                  window.className.contains("NSStatusBar") || window.level == .statusBar else {
+                return event
+            }
+            
+            // Show context menu at the mouse location
+            let location = NSEvent.mouseLocation
+            menu.popUp(positioning: nil, at: NSPoint(x: location.x, y: location.y), in: nil)
+            return nil
+        }
+    }
+    
+    @objc private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        // Try to find existing settings window first
+        if let settingsWindow = NSApp.windows.first(where: { $0.title.contains("Settings") }) {
+            settingsWindow.makeKeyAndOrderFront(nil)
+        } else {
+            // Post notification for SwiftUI to open the window
+            NotificationCenter.default.post(name: .openSettings, object: nil)
+        }
+    }
+    
+    @objc private func quitApp() {
+        NSApplication.shared.terminate(nil)
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        NSLog("[AppDelegate] applicationShouldTerminateAfterLastWindowClosed called - returning false")
-        return false  // Keep running when windows are closed
+        return false
     }
     
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        NSLog("[AppDelegate] applicationShouldTerminate called")
         return .terminateNow
     }
     
     func applicationWillTerminate(_ notification: Notification) {
-        // Ensure all processes are resumed before quitting
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
         CPULimiter.shared.stopAll()
     }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter, 
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Show notification even when app is in foreground
         completionHandler([.banner, .sound, .list])
     }
     
@@ -51,10 +97,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             completionHandler()
             return
         }
-        
-        // Handle the action
         HogDetector.shared.handleNotificationAction(response.actionIdentifier, appName: appName)
-        
         completionHandler()
     }
+}
+
+extension Notification.Name {
+    static let openSettings = Notification.Name("openSettings")
 }

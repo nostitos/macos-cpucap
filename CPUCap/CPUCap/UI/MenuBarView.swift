@@ -266,6 +266,10 @@ struct MenuBarView: View {
         .onDisappear {
             processMonitor.menuClosed()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            NSApp.activate(ignoringOtherApps: true)
+            openWindow(id: "settings")
+        }
     }
     
     private func setupConnections() {

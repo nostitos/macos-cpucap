@@ -31,9 +31,12 @@ class CPULimiter: ObservableObject {
     
     private func startTimer() {
         // Timer to handle frontmost app changes and apply throttling
+        // Only needed when there are active modes
         DispatchQueue.main.async { [weak self] in
-            self?.timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                self?.applyThrottling()
+            self?.timer?.invalidate()
+            self?.timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                guard let self = self, !self.activeModes.isEmpty else { return }
+                self.applyThrottling()
             }
         }
     }
@@ -41,7 +44,11 @@ class CPULimiter: ObservableObject {
     // MARK: - Public API
     
     func setMode(appName: String, mode: ThrottleMode) {
-        // First, restore any previous state
+        // Skip if mode hasn't changed
+        if activeModes[appName] == mode { return }
+        if mode == .fullSpeed && activeModes[appName] == nil { return }
+        
+        // Restore previous state only if mode is actually changing
         restoreApp(appName)
         
         DispatchQueue.main.async {
@@ -128,9 +135,11 @@ class CPULimiter: ObservableObject {
             }
         }
         
-        // Update UI
-        DispatchQueue.main.async {
-            self.currentlyThrottling = newThrottling
+        // Update UI only if changed
+        if newThrottling != currentlyThrottling {
+            DispatchQueue.main.async {
+                self.currentlyThrottling = newThrottling
+            }
         }
     }
     

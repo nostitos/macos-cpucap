@@ -23,6 +23,9 @@ class ProcessMonitor: ObservableObject {
     // Cache for process start times (doesn't change)
     private var startTimeCache: [pid_t: Date] = [:]
     
+    // Per-core CPU sampling for P-core/E-core breakdown
+    private var previousCoreTicks: [(user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)]?
+    
     // Mach timebase for converting CPU times to nanoseconds
     private let timebaseNumer: Double
     private let timebaseDenom: Double
@@ -91,7 +94,11 @@ class ProcessMonitor: ObservableObject {
         return count > 0 ? count : 4  // Default for M1
     }
     
-    @Published var isMenuOpen: Bool = false
+    private(set) var isMenuOpen: Bool = false
+    
+    // Separate timer for lightweight icon updates when menu is closed
+    private var iconTimer: Timer?
+    private static let iconUpdateInterval: Double = 5.0  // Slow polling for icon only
     
     func setRuleStore(_ store: RuleStore) {
         self.ruleStore = store
@@ -100,10 +107,17 @@ class ProcessMonitor: ObservableObject {
     func start() {
         guard isEnabled else { return }
         
-        // Invalidate existing timer
-        timer?.invalidate()
+        if isMenuOpen {
+            startFullSampling()
+        } else {
+            startIconSampling()
+        }
+    }
+    
+    /// Full process sampling - only when menu is open
+    private func startFullSampling() {
+        stopAllTimers()
         
-        // Sample at configured interval
         timer = Timer.scheduledTimer(withTimeInterval: samplingInterval, repeats: true) { [weak self] _ in
             guard let self = self, self.isEnabled else { return }
             self.sample()
@@ -111,27 +125,55 @@ class ProcessMonitor: ObservableObject {
         RunLoop.main.add(timer!, forMode: .common)
     }
     
+    /// Lightweight sampling - just core CPU for the menu bar icon
+    private func startIconSampling() {
+        stopAllTimers()
+        
+        iconTimer = Timer.scheduledTimer(withTimeInterval: Self.iconUpdateInterval, repeats: true) { [weak self] _ in
+            guard let self = self, self.isEnabled else { return }
+            self.sampleIconOnly()
+        }
+        RunLoop.main.add(iconTimer!, forMode: .common)
+    }
+    
+    /// Only sample per-core CPU stats for the menu bar icon - no process enumeration
+    private func sampleIconOnly() {
+        let (coreTotalCPU, pCoreCPU, eCoreCPU) = sampleCoreCPU()
+        
+        DispatchQueue.main.async {
+            self.summary.totalCPU = coreTotalCPU
+            self.summary.pCoreCPU = pCoreCPU
+            self.summary.eCoreCPU = eCoreCPU
+        }
+    }
+    
+    private func stopAllTimers() {
+        timer?.invalidate()
+        timer = nil
+        iconTimer?.invalidate()
+        iconTimer = nil
+    }
+    
     func setSamplingInterval(_ interval: Double) {
-        samplingInterval = max(0.5, min(10.0, interval))  // Clamp between 0.5 and 10 seconds
-        // Restart timer with new interval
-        if timer != nil {
-            start()
+        samplingInterval = max(0.5, min(10.0, interval))
+        if isMenuOpen {
+            startFullSampling()
         }
     }
     
     func stop() {
-        timer?.invalidate()
-        timer = nil
+        stopAllTimers()
     }
     
     func menuOpened() {
         isMenuOpen = true
-        // Sample immediately when menu opens for responsiveness
-        sample()
+        sample()  // Immediate full sample for responsiveness
+        startFullSampling()
     }
     
     func menuClosed() {
         isMenuOpen = false
+        startIconSampling()  // Switch to lightweight sampling
     }
     
     func toggle() {
@@ -344,18 +386,24 @@ class ProcessMonitor: ObservableObject {
             unlimitedCPU: unlimitedCPU
         )
         
+        // Sample per-core CPU for P-core/E-core breakdown (and consistent Total)
+        let (coreTotalCPU, pCoreCPU, eCoreCPU) = sampleCoreCPU()
+        
         DispatchQueue.main.async {
-            // Force SwiftUI to notice the change
-            self.objectWillChange.send()
-            
             self.processes = newProcesses
-            self.summary.totalCPU = totalCPUUsage / Double(self.coreCount)
+            // Use core-based total so P + E = Total exactly
+            self.summary.totalCPU = coreTotalCPU
+            self.summary.pCoreCPU = pCoreCPU
+            self.summary.eCoreCPU = eCoreCPU
             
             // Keep last 60 points (~2 minutes at 2s interval)
             self.cpuHistory.append(historyPoint)
             if self.cpuHistory.count > 60 {
                 self.cpuHistory.removeFirst()
             }
+            
+            // Apply rules to any newly appeared processes
+            self.ruleStore?.reapplyRulesIfNeeded()
         }
         
         previousSamples = currentSamples
@@ -645,5 +693,95 @@ class ProcessMonitor: ObservableObject {
             version: version,
             subProcesses: subProcesses
         )
+    }
+    
+    // MARK: - Per-Core CPU Sampling
+    
+    /// Sample CPU usage per core and calculate Total, P-core, and E-core percentages
+    private func sampleCoreCPU() -> (total: Double, pCore: Double, eCore: Double) {
+        var numCPUs: natural_t = 0
+        var cpuInfo: processor_info_array_t?
+        var numCPUInfo: mach_msg_type_number_t = 0
+        
+        let err = host_processor_info(mach_host_self(),
+                                       PROCESSOR_CPU_LOAD_INFO,
+                                       &numCPUs,
+                                       &cpuInfo,
+                                       &numCPUInfo)
+        
+        guard err == KERN_SUCCESS, let info = cpuInfo else {
+            return (0, 0, 0)
+        }
+        
+        defer {
+            // Deallocate the memory
+            vm_deallocate(mach_task_self_,
+                         vm_address_t(bitPattern: info),
+                         vm_size_t(numCPUInfo) * vm_size_t(MemoryLayout<integer_t>.size))
+        }
+        
+        let cpuLoadInfo = UnsafeBufferPointer(start: info, count: Int(numCPUInfo))
+        
+        // Extract current ticks for each core
+        var currentTicks: [(user: UInt64, system: UInt64, idle: UInt64, nice: UInt64)] = []
+        
+        for i in 0..<Int(numCPUs) {
+            let offset = Int(CPU_STATE_MAX) * i
+            let user = UInt64(cpuLoadInfo[offset + Int(CPU_STATE_USER)])
+            let system = UInt64(cpuLoadInfo[offset + Int(CPU_STATE_SYSTEM)])
+            let idle = UInt64(cpuLoadInfo[offset + Int(CPU_STATE_IDLE)])
+            let nice = UInt64(cpuLoadInfo[offset + Int(CPU_STATE_NICE)])
+            currentTicks.append((user, system, idle, nice))
+        }
+        
+        // Need previous sample to calculate delta
+        guard let previous = previousCoreTicks, previous.count == currentTicks.count else {
+            previousCoreTicks = currentTicks
+            return (0, 0, 0)
+        }
+        
+        // Calculate usage for P-cores and E-cores
+        var pCoreUsed: UInt64 = 0
+        var pCoreTotal: UInt64 = 0
+        var eCoreUsed: UInt64 = 0
+        var eCoreTotal: UInt64 = 0
+        
+        let pCoreCount = summary.pCoreCount
+        
+        for i in 0..<currentTicks.count {
+            let curr = currentTicks[i]
+            let prev = previous[i]
+            
+            let userDelta = curr.user > prev.user ? curr.user - prev.user : 0
+            let systemDelta = curr.system > prev.system ? curr.system - prev.system : 0
+            let idleDelta = curr.idle > prev.idle ? curr.idle - prev.idle : 0
+            let niceDelta = curr.nice > prev.nice ? curr.nice - prev.nice : 0
+            
+            let used = userDelta + systemDelta + niceDelta
+            let total = used + idleDelta
+            
+            if i < pCoreCount {
+                // P-core
+                pCoreUsed += used
+                pCoreTotal += total
+            } else {
+                // E-core
+                eCoreUsed += used
+                eCoreTotal += total
+            }
+        }
+        
+        // Store for next sample
+        previousCoreTicks = currentTicks
+        
+        // Calculate percentages as share of TOTAL CPU capacity
+        // This way P-core% + E-core% = Total%
+        let totalCapacity = pCoreTotal + eCoreTotal
+        
+        let pCorePercent = totalCapacity > 0 ? Double(pCoreUsed) / Double(totalCapacity) * 100.0 : 0
+        let eCorePercent = totalCapacity > 0 ? Double(eCoreUsed) / Double(totalCapacity) * 100.0 : 0
+        let totalPercent = pCorePercent + eCorePercent
+        
+        return (totalPercent, pCorePercent, eCorePercent)
     }
 }

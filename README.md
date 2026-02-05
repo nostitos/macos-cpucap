@@ -1,20 +1,25 @@
-# CPU Cap
+<p align="center">
+  <img src="screenshots/icon.png" width="128" height="128" alt="CPU Cap icon">
+</p>
 
-**Free macOS menu bar app that limits CPU-hungry apps to efficiency cores.**
+<h1 align="center">CPU Cap</h1>
 
-An open-source alternative to App Tamer ($15).
+<p align="center">
+  <strong>Free macOS menu bar app that limits CPU-hungry apps to efficiency cores.</strong><br>
+  An open-source alternative to App Tamer ($15).
+</p>
 
-![CPU Cap Screenshot](screenshots/main.png)
+<p align="center">
+  <a href="https://github.com/nostitos/macos-cpucap/releases/latest"><strong>Download Latest Release</strong></a>
+</p>
 
-## Download
+---
 
-**[Download CPU Cap v1.2.0](https://github.com/nicokosi/cpucap/releases/latest)**
-
-Requires macOS 14.0 (Sonoma) or later. Optimized for Apple Silicon Macs.
+![CPU Cap](screenshots/main.png)
 
 ## What It Does
 
-Some apps hog your CPU even when you're not using them - draining battery, spinning fans, and slowing everything down. CPU Cap lets you limit background apps to efficiency cores, saving up to 70% energy.
+Some apps hog your CPU even when you're not using them - draining battery, spinning fans, and slowing everything down. CPU Cap pushes background apps to efficiency cores, saving up to 70% energy.
 
 **Before:** Chrome uses 80% CPU in the background on P-cores, laptop gets hot  
 **After:** Chrome is E-limited, uses 70% less power, stays cool and quiet
@@ -22,12 +27,13 @@ Some apps hog your CPU even when you're not using them - draining battery, spinn
 ## Features
 
 - **E-limited mode** - Limit apps to E-cores to save power
-- **Auto-stop mode** - Pause apps when in background, resume when focused
-- **Live CPU chart** - Stacked graph showing unlimited vs limited CPU usage
-- **Real-time monitoring** - See CPU usage sorted by Now & Average
+- **Auto-stop mode** - Pause apps in background, resume when focused
+- **Real P-core / E-core monitoring** - Actual per-core-type CPU stats via `host_processor_info()`
+- **Live stacked CPU chart** - See unlimited, E-limited, and auto-stopped CPU at a glance
+- **CPU hog alerts** - Get notified when an app uses too much CPU
+- **Near-zero idle CPU** - Only samples processes when the menu is open
 - **Adjustable sampling** - Set update interval from 0.5s to 5s
-- **Menu bar app** - Click the icon to see and control apps
-- **Lightweight** - Uses <1% CPU itself
+- **Right-click menu** - Quick access to Settings and Quit
 - **Open source** - Free forever, no tracking, no ads
 
 ## How It Works
@@ -37,8 +43,8 @@ CPU Cap uses macOS Quality of Service (QoS) to control which CPU cores apps run 
 | Mode | What it does | Best for |
 |------|--------------|----------|
 | **Full Speed** | Runs on all cores (P + E) | Active apps |
-| **E-limited** | Limits to E-cores via QoS | Background apps you want running |
-| **Auto-stop** | Pauses when in background, resumes when focused | Apps you only need when visible |
+| **E-limited** | Limits to E-cores via background QoS | Background apps you want running |
+| **Auto-stop** | SIGSTOP when in background, SIGCONT when focused | Apps you only need when visible |
 
 ### Why E-cores?
 
@@ -51,12 +57,18 @@ When you E-limit an app, it keeps running smoothly but uses far less power. Your
 ## The Interface
 
 ### Header
-Shows your CPU model and usage breakdown:
-- **Total** - Overall CPU usage
-- **X P-cores** - Performance core usage  
+
+Shows your CPU model (e.g., "Apple M2 Pro") and real-time usage:
+- **Total** - Overall CPU usage (P + E combined)
+- **X P-cores** - Performance core usage
 - **X E-cores** - Efficiency core usage
 
-### Chart
+These numbers are measured per-core and always add up: P-cores + E-cores = Total.
+
+### Stacked CPU Chart
+
+![CPU Cap Main View](screenshots/main.png)
+
 Stacked area chart showing CPU breakdown over time:
 - **Green** - Unlimited apps
 - **Blue** - E-limited apps
@@ -64,88 +76,133 @@ Stacked area chart showing CPU breakdown over time:
 - **White line** - Total CPU
 
 ### Process List
-Apps sorted by average CPU usage. Each row shows:
+
+Apps sorted by CPU usage. Each row shows:
 - **Status dot** - Green (unlimited), Blue (E-limited), Orange (auto-stopped)
 - **App name** - Click for detailed sub-process view
-- **CPU bar** - Visual indicator (full bar = 50% of P-core capacity)
-- **Now** - Current CPU percentage
+- **CPU bar** - Visual bar (full = 50% of P-core capacity)
+- **Now** - Current CPU %
 - **Avg** - Lifetime average CPU
-- **Mode** - Click to change (E = E-limited, S = Auto-stop)
+- **Mode** - Click dropdown to change (E = E-limited, S = Auto-stop)
+
+### Process Details
+
+Click any app name to see detailed info:
+
+![Process Details](screenshots/subdetails.png)
+
+- App info, bundle path, version
+- Per-sub-process CPU and memory breakdown
+- Throttle mode selector
+- "Show in Finder" link
 
 ### Footer
-Shows count of limited apps. Click to expand and see the list.
+
+Shows count of limited apps with a **(show)**/**(hide)** toggle to expand the list. Each limited app shows its mode (E-limited or auto-stopped) and has a remove button.
+
+## Settings
+
+Right-click the menu bar icon or click "Settings" in the footer:
+
+![Settings](screenshots/settings.png)
+
+- **Startup** - Launch CPU Cap at login
+- **Sampling** - Adjust update interval (0.5s - 5s). Lower = more responsive, higher = less CPU
+- **Rules** - View, toggle, and delete saved app modes
+- **Alerts** - Configure CPU hog notifications (threshold, duration, enable/disable)
 
 ## Installation
 
-1. Download the DMG from [Releases](https://github.com/nicokosi/cpucap/releases)
+1. Download the DMG from [Releases](https://github.com/nostitos/macos-cpucap/releases)
 2. Open the DMG file
 3. Drag CPU Cap to your Applications folder
 4. Open CPU Cap from Applications
 5. Click "Open" if macOS asks about unidentified developer
 
-## Settings
+Requires macOS 14.0 (Sonoma) or later. Optimized for Apple Silicon (M1/M2/M3/M4).
 
-Access via the Settings button in the footer:
+## Performance
 
-- **Startup** - Launch at login
-- **Sampling** - Adjust update interval (0.5s - 5s)
-- **Rules** - View and manage saved app modes
-- **Alerts** - Configure CPU hog notifications
+CPU Cap is designed to use minimal resources:
+
+- **Menu closed:** Near-zero CPU. Only a lightweight `host_processor_info()` call every 5 seconds to update the menu bar icon.
+- **Menu open:** Full process sampling at your configured interval (default 2s).
+- **No redundant work:** Rules are applied on change, not polled. Timers stop when not needed.
 
 ## FAQ
 
 **Does it work on Apple Silicon (M1/M2/M3/M4)?**  
-Yes! CPU Cap is optimized for Apple Silicon and uses E-core affinity.
+Yes! CPU Cap is built for Apple Silicon and uses real per-core-type CPU monitoring.
 
-**What's the difference vs percentage-based throttling?**  
-Old tools freeze apps in cycles (run 20%, frozen 80%), causing stuttering. E-limiting keeps apps running smoothly on slower cores.
+**What's the difference vs App Tamer or percentage-based throttling?**  
+Old tools freeze apps in cycles (run 20%, frozen 80%), causing stuttering. E-limiting keeps apps running smoothly on slower cores - no freezing, no stuttering.
 
 **Will E-limiting slow down my apps?**  
 E-cores are 2-3x slower than P-cores, but for background tasks this is usually fine. The app keeps running - it's not paused.
 
 **What about Auto-stop mode?**  
-Auto-stop completely pauses the app (SIGSTOP) when it's in the background. When you click on the app, it instantly resumes.
+Auto-stop completely pauses the app (SIGSTOP) when it's in the background. When you switch to the app, it instantly resumes (SIGCONT).
 
 **Why does Activity Monitor still show high CPU?**  
-Activity Monitor shows CPU time, not which cores. An E-limited app may show high %, but uses less power on E-cores.
+Activity Monitor shows total CPU time, not which cores are being used. An E-limited app may show high %, but it's using less power because it's on E-cores.
 
 **Does it remember my settings?**  
-Yes, all modes are saved and restored when apps restart.
+Yes. All modes are saved to UserDefaults and restored automatically.
+
+**How do the P-core / E-core percentages work?**  
+CPU Cap reads actual per-core CPU ticks via `host_processor_info()` and sums them by core type. The values represent each type's share of total CPU capacity, so P-cores + E-cores = Total.
 
 ## Building from Source
 
 Requires Xcode 15+ and macOS 14+.
 
 ```bash
-git clone https://github.com/nicokosi/cpucap.git
-cd cpucap
+git clone https://github.com/nostitos/macos-cpucap.git
+cd macos-cpucap
 
 # Development build
 cd CPUCap
 swift build
 .build/debug/CPUCap
 
-# Release build
-./scripts/build-release.sh 1.2.0
+# Release build (universal binary: arm64 + x86_64)
+./scripts/build-release.sh 1.2.1
 
 # Create DMG installer
-./scripts/create-dmg.sh 1.2.0
+./scripts/create-dmg.sh 1.2.1
 ```
 
 ## Project Structure
 
 ```
-cpucap/
-├── CPUCap/                 # Swift package
+macos-cpucap/
+├── CPUCap/                     # Swift package
 │   ├── Package.swift
 │   └── CPUCap/
-│       ├── CPUCapApp.swift     # App entry point
-│       ├── Core/               # Process monitoring & limiting
-│       ├── UI/                 # SwiftUI views
-│       └── Resources/          # Icons
-├── scripts/                # Build scripts
-├── dmg-resources/          # DMG background images
-└── screenshots/            # Documentation images
+│       ├── CPUCapApp.swift         # App entry, MenuBarExtra
+│       ├── AppDelegate.swift       # Right-click menu, notifications
+│       ├── Core/
+│       │   ├── ProcessMonitor.swift    # Process sampling, per-core CPU
+│       │   ├── CPULimiter.swift        # setpriority / SIGSTOP throttling
+│       │   ├── ProcessInfo.swift       # Data models
+│       │   └── HogDetector.swift       # CPU hog alerts
+│       ├── Rules/
+│       │   ├── Rule.swift              # ThrottleMode enum
+│       │   ├── RuleStore.swift         # Persistence, rule management
+│       │   └── DefaultRules.swift      # Suggested modes
+│       └── UI/
+│           ├── MenuBarView.swift       # Main menu window
+│           ├── ProcessRowView.swift    # Per-app row
+│           ├── ProcessDetailView.swift # Detail window
+│           ├── SettingsView.swift      # Settings window
+│           └── Components/
+│               ├── CPUBar.swift        # Per-app CPU bar
+│               ├── CPUGraph.swift      # Stacked area chart
+│               ├── CPUSummaryHeader.swift
+│               └── CapPicker.swift     # Mode dropdown
+├── scripts/                    # Build & packaging scripts
+├── dmg-resources/              # DMG background
+└── screenshots/                # README images
 ```
 
 ## Contributing

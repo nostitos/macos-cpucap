@@ -7,7 +7,6 @@ class RuleStore: ObservableObject {
     private let storageKey = "CPUCapRules"
     private var cpuLimiter: CPULimiter?
     private var processMonitor: ProcessMonitor?
-    private var applyTimer: Timer?
     
     // Use a consistent UserDefaults location regardless of how the app is launched
     private let defaults: UserDefaults = {
@@ -19,16 +18,20 @@ class RuleStore: ObservableObject {
     
     init() {
         loadRules()
-        startAutoApply()
     }
     
     func setCPULimiter(_ limiter: CPULimiter) {
         self.cpuLimiter = limiter
-        applyAllRules()
+        applyAllRules()  // Apply once when limiter is ready
     }
     
     func setProcessMonitor(_ monitor: ProcessMonitor) {
         self.processMonitor = monitor
+    }
+    
+    /// Called by ProcessMonitor after each sample to apply rules to newly appeared processes
+    func reapplyRulesIfNeeded() {
+        applyAllRules()
     }
     
     // MARK: - Rule Management
@@ -130,13 +133,6 @@ class RuleStore: ObservableObject {
     private func applyAllRules() {
         for rule in rules where rule.enabled {
             applyRule(rule)
-        }
-    }
-    
-    private func startAutoApply() {
-        // Periodically check for new processes that match rules
-        applyTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.applyAllRules()
         }
     }
 }

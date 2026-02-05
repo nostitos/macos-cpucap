@@ -73,7 +73,10 @@ class HogDetector: ObservableObject {
     }
     
     func start() {
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        guard alertsEnabled else { return }
+        timer?.invalidate()
+        // Check every 5 seconds - hog detection doesn't need to be fast
+        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.check()
         }
     }
@@ -84,7 +87,7 @@ class HogDetector: ObservableObject {
     }
     
     private func check() {
-        guard alertsEnabled, let processes = processMonitor?.processes else { return }
+        guard alertsEnabled, let processes = processMonitor?.processes, !processes.isEmpty else { return }
         
         let now = Date()
         var currentHogs = Set<String>()
