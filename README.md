@@ -1,6 +1,6 @@
 # CPU Cap
 
-**Free macOS menu bar app that limits how much CPU any app can use.**
+**Free macOS menu bar app that manages CPU usage using Apple Silicon efficiency cores.**
 
 An open-source alternative to App Tamer ($15).
 
@@ -8,24 +8,43 @@ An open-source alternative to App Tamer ($15).
 
 ## Download
 
-**[Download CPU Cap v1.0.0](https://github.com/nostitos/macos-cpucap/releases/latest)**
+**[Download CPU Cap](https://github.com/nostitos/macos-cpucap/releases/latest)**
 
-Requires macOS 14.0 (Sonoma) or later. Works on both Apple Silicon and Intel Macs.
+Requires macOS 14.0 (Sonoma) or later. Optimized for Apple Silicon Macs.
 
 ## What It Does
 
-Some apps hog your CPU even when you're not using them - draining battery, making fans spin, and slowing everything down. CPU Cap lets you set a limit on any app's CPU usage.
+Some apps hog your CPU even when you're not using them - draining battery, making fans spin, and slowing everything down. CPU Cap lets you push background apps to efficiency cores, saving up to 70% energy.
 
-**Before:** Chrome uses 80% CPU in the background, your laptop gets hot  
-**After:** Chrome is capped at 20%, runs cool and quiet
+**Before:** Chrome uses 80% CPU in the background on P-cores, your laptop gets hot  
+**After:** Chrome runs on E-cores, uses 70% less power, stays cool and quiet
 
 ## Features
 
-- **Limit any app** - Set a CPU cap from 5% to 95%
-- **See CPU usage** - Sorted by which apps use the most
+- **Efficiency Mode** - Run background apps on E-cores to save power
+- **Auto-Stop Mode** - Pause apps when in background, resume when focused
+- **See CPU usage** - Sorted by which apps use the most (Now & Average)
 - **Runs in menu bar** - Click the icon to see and control apps
 - **Lightweight** - Uses <1% CPU itself when menu is closed
 - **Open source** - Free forever, no tracking, no ads
+
+## How It Works
+
+CPU Cap uses macOS Quality of Service (QoS) to control which CPU cores apps run on:
+
+| Mode | What it does | Best for |
+|------|--------------|----------|
+| **Full Speed** | Runs on all cores (P + E) | Active apps |
+| **Efficiency** | Hints macOS to prefer E-cores | Background apps you want running |
+| **Auto-Stop** | Pauses when in background, resumes when focused | Apps you only need when visible |
+
+### Why E-cores?
+
+Apple Silicon Macs have two types of CPU cores:
+- **P-cores (Performance)** - Fast but power-hungry
+- **E-cores (Efficiency)** - Slower but use ~70% less energy
+
+When you set an app to Efficiency mode, it keeps running smoothly but uses far less power. Your P-cores stay free for the apps you're actively using.
 
 ## Installation
 
@@ -35,55 +54,52 @@ Some apps hog your CPU even when you're not using them - draining battery, makin
 4. Open CPU Cap from Applications
 5. Click "Open" if macOS asks about unidentified developer
 
-![Installation](screenshots/install.png)
-
 ## How to Use
 
 ### 1. Open the Menu
 Click the CPU Cap icon in your menu bar (shows current total CPU %).
 
-![Menu Bar](screenshots/menubar.png)
-
 ### 2. Find the App
 Apps are sorted by average CPU usage. Use the search bar to filter.
 
-![Process List](screenshots/list.png)
+### 3. Set a Mode
+Click the dropdown next to any app and choose:
+- **Full Speed** - No throttling
+- **Efficiency** - Run on E-cores (shows "E" indicator)
+- **Auto-Stop** - Pause in background (shows "-" indicator)
 
-### 3. Set a Cap
-Click the dropdown next to any app and choose a limit (e.g., 20%).
+### 4. View Details
+Click on any app name to see detailed info including sub-processes:
 
-![Setting a Cap](screenshots/cap.png)
+![Process Details](screenshots/subdetails.png)
 
-The app will now be throttled. You'll see it marked as "limited" in the list.
+### 5. Settings
+Configure startup behavior and manage saved rules:
 
-### 4. Remove a Cap
-Click the dropdown and select "—" to remove the limit.
-
-## How It Works
-
-CPU Cap uses macOS signals (SIGSTOP/SIGCONT) to pause and resume apps in quick cycles. An app capped at 20% runs for a short time, then pauses, then runs again - averaging out to 20% CPU usage.
-
-This is the same technique used by Apple's own App Nap feature, and commercial tools like App Tamer.
-
-**Is it safe?**  
-Yes. Apps resume normally when you remove the cap or quit CPU Cap. No data is lost.
-
-**Will it break apps?**  
-Most apps work fine. Some real-time apps (video calls, games) may stutter if capped too low.
+![Settings](screenshots/settings.png)
 
 ## FAQ
 
-**Does it work on Apple Silicon (M1/M2/M3)?**  
-Yes, CPU Cap is a universal app that runs natively on both Intel and Apple Silicon.
+**Does it work on Apple Silicon (M1/M2/M3/M4)?**  
+Yes! CPU Cap is optimized for Apple Silicon and uses the E-core affinity feature. It also works on Intel Macs using the older SIGSTOP method.
+
+**What's the difference vs the old percentage caps?**  
+The old method (used by App Tamer and others) freezes apps in cycles - e.g., run 20% of the time, frozen 80%. This can cause stuttering. Efficiency mode keeps apps running smoothly, just on slower cores.
+
+**Will Efficiency mode slow down my apps?**  
+E-cores are about 2-3x slower than P-cores, but for background tasks this is usually fine. The app keeps running - it's not paused.
+
+**What about Auto-Stop mode?**  
+Auto-Stop completely pauses the app (SIGSTOP) when it's in the background. When you click on the app, it instantly resumes. Good for apps you only need when visible.
 
 **Why does Activity Monitor still show high CPU?**  
-Activity Monitor averages CPU over time. A capped app runs at full speed in bursts, then pauses. The average settles near your cap after a few seconds.
+Activity Monitor shows total CPU time, not which cores are used. An app in Efficiency mode may still show high CPU %, but it's using less power because it's on E-cores.
 
 **Can I cap system processes?**  
-Some protected system processes (like WindowServer) cannot be throttled. CPU Cap will only show apps you can actually limit.
+Some protected system processes cannot be throttled. CPU Cap only shows apps you can actually control.
 
 **Does it start at login?**  
-Yes, you can enable this in Settings. CPU Cap remembers your caps between sessions.
+Yes, you can enable this in Settings. CPU Cap remembers your modes between sessions.
 
 **Why do I see "unidentified developer" warning?**  
 The app is ad-hoc signed (not notarized with Apple). You can safely click "Open" or right-click and choose Open.
@@ -102,10 +118,10 @@ swift build
 .build/debug/CPUCap
 
 # Release build (universal binary)
-./scripts/build-release.sh 1.0.0
+./scripts/build-release.sh 1.0.1
 
 # Create DMG installer
-./scripts/create-dmg.sh 1.0.0
+./scripts/create-dmg.sh 1.0.1
 ```
 
 ## Project Structure
