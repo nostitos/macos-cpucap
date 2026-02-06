@@ -27,7 +27,7 @@ enum ThrottleMode: String, Codable, CaseIterable {
         switch self {
         case .fullSpeed: return "Run at full speed on all cores"
         case .efficiency: return "Limit to E-cores to save power"
-        case .stopped: return "Stop when in background, resume when focused"
+        case .stopped: return "Stop when in background, resume when focused (may crash some apps)"
         }
     }
 }

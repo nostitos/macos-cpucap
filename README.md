@@ -44,7 +44,11 @@ CPU Cap uses macOS Quality of Service (QoS) to control which CPU cores apps run 
 |------|--------------|----------|
 | **Full Speed** | Runs on all cores (P + E) | Active apps |
 | **E-limited** | Limits to E-cores via background QoS | Background apps you want running |
-| **Auto-stop** | SIGSTOP when in background, SIGCONT when focused | Apps you only need when visible |
+| **Auto-stop** | Freezes app in background, resumes when focused | Apps you only need when visible |
+
+**Automatic restore:** When you switch to a limited app (bring it to the foreground), CPU Cap automatically restores full P-core access. When you switch away, the limit is re-applied. You never have to manually toggle modes.
+
+**Graceful Auto-stop:** Auto-stop uses a two-phase approach to avoid crashes. When backgrounding: the app is E-limited first, then frozen after 2 seconds. When foregrounding: the app is unfrozen but kept E-limited for 3 seconds while it reconnects, then restored to full speed. Some apps may still not handle being frozen — use E-limited mode if an app misbehaves.
 
 ### Why E-cores?
 
@@ -117,7 +121,8 @@ Right-click the menu bar icon or click "Settings" in the footer:
 2. Open the DMG file
 3. Drag CPU Cap to your Applications folder
 4. Open CPU Cap from Applications
-5. Click "Open" if macOS asks about unidentified developer
+
+The app is signed and notarized by Apple, so it opens without any Gatekeeper warnings.
 
 Requires macOS 14.0 (Sonoma) or later. Optimized for Apple Silicon (M1/M2/M3/M4).
 
@@ -138,10 +143,10 @@ Yes! CPU Cap is built for Apple Silicon and uses real per-core-type CPU monitori
 Old tools freeze apps in cycles (run 20%, frozen 80%), causing stuttering. E-limiting keeps apps running smoothly on slower cores - no freezing, no stuttering.
 
 **Will E-limiting slow down my apps?**  
-E-cores are 2-3x slower than P-cores, but for background tasks this is usually fine. The app keeps running - it's not paused.
+Only in the background. E-cores are 2-3x slower than P-cores, but for background tasks this is usually fine. When you switch to the app, CPU Cap automatically restores full P-core access — you won't notice any slowdown while actively using it.
 
 **What about Auto-stop mode?**  
-Auto-stop completely pauses the app (SIGSTOP) when it's in the background. When you switch to the app, it instantly resumes (SIGCONT).
+Auto-stop freezes the app when it's in the background and resumes it when you switch back. It uses a graceful two-phase transition (E-limit before freezing, E-limit after resuming) to reduce crashes. However, some apps — especially Electron apps, apps with WebSockets, or apps with background sync — may still not handle it well. If an app crashes, switch it to E-limited instead.
 
 **Why does Activity Monitor still show high CPU?**  
 Activity Monitor shows total CPU time, not which cores are being used. An E-limited app may show high %, but it's using less power because it's on E-cores.

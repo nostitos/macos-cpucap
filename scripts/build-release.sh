@@ -2,6 +2,7 @@
 
 # Build CPU Cap for release
 # Creates a universal binary (arm64 + x86_64) app bundle
+# Signs with Developer ID for distribution outside the App Store
 
 set -e
 
@@ -11,6 +12,8 @@ BUILD_DIR="$PROJECT_DIR/build"
 APP_NAME="CPU Cap"
 BUNDLE_ID="com.cpucap.app"
 VERSION="${1:-1.0.0}"
+SIGN_IDENTITY="Developer ID Application: Mathieu Gagnon (RJL9XWBZ9L)"
+ENTITLEMENTS="$PROJECT_DIR/CPUCap/CPUCap/Resources/CPUCap.entitlements"
 
 echo "Building CPU Cap v$VERSION..."
 
@@ -78,7 +81,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright 2024. MIT License.</string>
+    <string>Copyright 2025. MIT License.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>
@@ -110,13 +113,27 @@ if [ -f "$ICON_SOURCE" ]; then
     echo "Icon created."
 fi
 
-# Ad-hoc code sign
-echo "Code signing..."
-codesign --sign - --force --deep "$APP_BUNDLE"
+# Code sign with Developer ID
+echo "Code signing with Developer ID..."
+codesign --sign "$SIGN_IDENTITY" \
+    --force \
+    --options runtime \
+    --entitlements "$ENTITLEMENTS" \
+    --timestamp \
+    "$APP_BUNDLE/Contents/MacOS/CPU Cap"
+
+codesign --sign "$SIGN_IDENTITY" \
+    --force \
+    --options runtime \
+    --entitlements "$ENTITLEMENTS" \
+    --timestamp \
+    "$APP_BUNDLE"
 
 # Verify
-echo "Verifying..."
-codesign --verify --deep --strict "$APP_BUNDLE"
+echo "Verifying signature..."
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+echo ""
+spctl --assess --type execute --verbose "$APP_BUNDLE" 2>&1 || true
 
 echo ""
 echo "Build complete!"

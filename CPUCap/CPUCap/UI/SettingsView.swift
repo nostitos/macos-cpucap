@@ -22,7 +22,7 @@ struct SettingsView: View {
     
     @State private var selectedTab: SettingsTab = .general
     @State private var launchAtLogin = LoginItemManager.isEnabled
-    @State private var hogThreshold: Double = 80
+    @State private var hogThreshold: Double = 40
     @State private var hogDuration: Double = 10
     @State private var alertsEnabled = true
     @State private var samplingInterval: Double = 2.0
@@ -92,18 +92,6 @@ struct SettingsView: View {
                 .padding(8)
             }
             
-            GroupBox("About") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("CPU Cap monitors running processes and limits CPU usage using E-core affinity or SIGSTOP/SIGCONT signals.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("Processes are grouped by app name - all helper processes (like browser renderers) are counted together.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(8)
-            }
             
             Spacer()
         }
@@ -169,7 +157,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
                         Text("CPU threshold:")
-                        Slider(value: $hogThreshold, in: 50...100, step: 5)
+                        Slider(value: $hogThreshold, in: 15...100, step: 5)
                         Text("\(Int(hogThreshold))%")
                             .frame(width: 45, alignment: .trailing)
                             .monospacedDigit()

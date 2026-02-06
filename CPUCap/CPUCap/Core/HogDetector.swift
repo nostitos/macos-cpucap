@@ -4,7 +4,7 @@ import UserNotifications
 class HogDetector: ObservableObject {
     static let shared = HogDetector()
     
-    @Published var hogThreshold: Double = 50.0  // Alert if > 50%
+    @Published var hogThreshold: Double = 40.0  // Alert if > 40%
     @Published var hogDuration: TimeInterval = 10.0  // for > 10 seconds
     @Published var alertsEnabled: Bool = true
     @Published var mutedApps: Set<String> = []  // Apps user said "don't warn about"

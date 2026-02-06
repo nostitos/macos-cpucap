@@ -30,6 +30,8 @@ struct ModePicker: View {
             Button(action: { onModeChanged(.stopped) }) {
                 HStack {
                     Text("Auto-stop")
+                    Text("- may crash some apps")
+                        .foregroundColor(.secondary)
                     if currentMode == .stopped {
                         Image(systemName: "checkmark")
                     }
