@@ -65,13 +65,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .applicationName: "CPU Cap",
             .applicationVersion: version,
             .version: version,
-            .credits: NSAttributedString(
-                string: "Free, open-source macOS menu bar app that limits background apps to efficiency cores.\n\nhttps://github.com/nostitos/macos-cpucap",
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: 11),
-                    .foregroundColor: NSColor.secondaryLabelColor
-                ]
-            )
+            .credits: {
+                let text = NSMutableAttributedString(
+                    string: "Free, open-source macOS menu bar app that limits background apps to efficiency cores.\n\n",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 11),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ]
+                )
+                let link = NSAttributedString(
+                    string: "GitHub",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 11),
+                        .link: URL(string: "https://github.com/nostitos/macos-cpucap")!
+                    ]
+                )
+                text.append(link)
+                return text
+            }()
         ])
     }
     
